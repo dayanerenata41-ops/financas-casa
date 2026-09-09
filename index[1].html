@@ -1,0 +1,2808 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<title>Finanças da Casa</title>
+<meta name="description" content="Painel de controle financeiro da família" />
+<meta name="theme-color" content="#059669" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Finanças" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  * { font-family: 'Poppins', sans-serif; }
+  body { margin: 0; background: #f0fdf4; }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 999px; }
+  input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* ------------------------------ Supabase -------------------------------- */
+/* Usa a tabela "dados" (colunas: chave text, valor jsonb) como armazenamento
+   chave/valor, no lugar do window.storage dos artifacts da Claude. */
+
+const SUPABASE_URL = 'https://asvxjtvwpcgxortaumae.supabase.co/rest/v1';
+const SUPABASE_KEY = 'sb_publishable_hxXUXcxZBiJoUQYN01Nwog_OJwWjYE7';
+
+async function sbGetAll() {
+  const res = await fetch(`${SUPABASE_URL}/dados?select=chave,valor`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  if (!res.ok) {
+    const texto = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}${texto ? `: ${texto.slice(0, 200)}` : ''}`);
+  }
+  const linhas = await res.json();
+  const mapa = {};
+  linhas.forEach((l) => { mapa[l.chave] = l.valor; });
+  return mapa;
+}
+
+async function sbSet(chave, valor) {
+  const res = await fetch(`${SUPABASE_URL}/dados?on_conflict=chave`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify([{ chave, valor }]),
+  });
+  if (!res.ok) {
+    const texto = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}${texto ? `: ${texto.slice(0, 200)}` : ''}`);
+  }
+  return true;
+}
+
+/* -------------------------------- Ícones --------------------------------- */
+/* Substitui o lucide-react (não disponível fora do artifact) por um conjunto
+   próprio e enxuto de ícones em SVG, no mesmo estilo visual (stroke, 24x24). */
+
+const ICONS = {
+  X: [['path', { d: 'M18 6 6 18' }], ['path', { d: 'm6 6 12 12' }]],
+  Check: [['polyline', { points: '20 6 9 17 4 12' }]],
+  Plus: [['line', { x1: 12, y1: 5, x2: 12, y2: 19 }], ['line', { x1: 5, y1: 12, x2: 19, y2: 12 }]],
+  ChevronLeft: [['polyline', { points: '15 18 9 12 15 6' }]],
+  ChevronRight: [['polyline', { points: '9 18 15 12 9 6' }]],
+  ChevronDown: [['polyline', { points: '6 9 12 15 18 9' }]],
+  Pencil: [['path', { d: 'M12 20h9' }], ['path', { d: 'M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z' }]],
+  Trash2: [
+    ['path', { d: 'M3 6h18' }],
+    ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }],
+    ['path', { d: 'm19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }],
+    ['line', { x1: 10, y1: 11, x2: 10, y2: 17 }],
+    ['line', { x1: 14, y1: 11, x2: 14, y2: 17 }],
+  ],
+  AlertTriangle: [
+    ['path', { d: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z' }],
+    ['line', { x1: 12, y1: 9, x2: 12, y2: 13 }],
+    ['line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }],
+  ],
+  Filter: [['polygon', { points: '22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3' }]],
+  Wallet: [
+    ['path', { d: 'M21 12V7H5a2 2 0 0 1 0-4h14v4' }],
+    ['path', { d: 'M3 5v14a2 2 0 0 0 2 2h16v-5' }],
+    ['path', { d: 'M18 12a2 2 0 0 0 0 4h4v-4Z' }],
+  ],
+  RefreshCw: [
+    ['path', { d: 'M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+    ['path', { d: 'M3 3v5h5' }],
+    ['path', { d: 'M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16' }],
+    ['path', { d: 'M16 16h5v5' }],
+  ],
+  Copy: [
+    ['rect', { x: 9, y: 9, width: 13, height: 13, rx: 2 }],
+    ['path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }],
+  ],
+  Cloud: [['path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }]],
+  CloudOff: [
+    ['path', { d: 'M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6' }],
+    ['path', { d: 'M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3' }],
+    ['line', { x1: 2, y1: 2, x2: 22, y2: 22 }],
+  ],
+  UploadCloud: [
+    ['path', { d: 'M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242' }],
+    ['path', { d: 'M12 12v9' }],
+    ['path', { d: 'm16 16-4-4-4 4' }],
+  ],
+  FileSpreadsheet: [
+    ['path', { d: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z' }],
+    ['path', { d: 'M14 2v4a2 2 0 0 0 2 2h4' }],
+    ['path', { d: 'M8 13h2' }], ['path', { d: 'M14 13h2' }], ['path', { d: 'M8 17h2' }], ['path', { d: 'M14 17h2' }],
+  ],
+  Info: [['circle', { cx: 12, cy: 12, r: 10 }], ['path', { d: 'M12 16v-4' }], ['path', { d: 'M12 8h.01' }]],
+  LayoutDashboard: [
+    ['rect', { x: 3, y: 3, width: 7, height: 9, rx: 1 }],
+    ['rect', { x: 14, y: 3, width: 7, height: 5, rx: 1 }],
+    ['rect', { x: 14, y: 12, width: 7, height: 9, rx: 1 }],
+    ['rect', { x: 3, y: 16, width: 7, height: 5, rx: 1 }],
+  ],
+  ArrowDownCircle: [['circle', { cx: 12, cy: 12, r: 10 }], ['path', { d: 'M12 8v8' }], ['path', { d: 'm8 12 4 4 4-4' }]],
+  ArrowUpCircle: [['circle', { cx: 12, cy: 12, r: 10 }], ['path', { d: 'M12 16V8' }], ['path', { d: 'm8 12 4-4 4 4' }]],
+  CreditCard: [['rect', { x: 2, y: 5, width: 20, height: 14, rx: 2 }], ['line', { x1: 2, y1: 10, x2: 22, y2: 10 }]],
+  TrendingUp: [['polyline', { points: '22 7 13.5 15.5 8.5 10.5 2 17' }], ['polyline', { points: '16 7 22 7 22 13' }]],
+  Sparkles: [['path', { d: 'm12 3-1.9 4.9L5 9.8l4.9 1.9L12 17l1.9-5.3L19 9.8l-5.1-1.9Z' }]],
+  HeartHandshake: [['path', { d: 'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z' }]],
+  CalendarClock: [
+    ['rect', { x: 3, y: 4, width: 18, height: 18, rx: 2 }],
+    ['line', { x1: 16, y1: 2, x2: 16, y2: 6 }],
+    ['line', { x1: 8, y1: 2, x2: 8, y2: 6 }],
+    ['line', { x1: 3, y1: 10, x2: 21, y2: 10 }],
+  ],
+  Landmark: [
+    ['polygon', { points: '12 2 21 8 3 8' }],
+    ['line', { x1: 3, y1: 22, x2: 21, y2: 22 }],
+    ['line', { x1: 6, y1: 18, x2: 6, y2: 11 }],
+    ['line', { x1: 10, y1: 18, x2: 10, y2: 11 }],
+    ['line', { x1: 14, y1: 18, x2: 14, y2: 11 }],
+    ['line', { x1: 18, y1: 18, x2: 18, y2: 11 }],
+  ],
+  Users: [
+    ['circle', { cx: 9, cy: 7, r: 4 }],
+    ['path', { d: 'M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2' }],
+    ['path', { d: 'M22 21v-2a4 4 0 0 0-3-3.87' }],
+    ['path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' }],
+  ],
+  Target: [['circle', { cx: 12, cy: 12, r: 10 }], ['circle', { cx: 12, cy: 12, r: 6 }], ['circle', { cx: 12, cy: 12, r: 2 }]],
+  Activity: [['polyline', { points: '22 12 18 12 15 21 9 3 6 12 2 12' }]],
+};
+ICONS.Repeat = ICONS.RefreshCw;
+
+function Icon({ name, size = 16, className = '', style }) {
+  if (name === 'Loader2') {
+    return (
+      <span
+        className={`inline-block rounded-full border-2 border-current border-t-transparent animate-spin ${className}`}
+        style={{ width: size, height: size, ...style }}
+      />
+    );
+  }
+  if (name === 'PiggyBank') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" className={className} style={style}>
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+        <text x="12" y="16.5" textAnchor="middle" fontSize="11" fontWeight="700" fill="currentColor" stroke="none">$</text>
+      </svg>
+    );
+  }
+  const nodes = ICONS[name];
+  if (!nodes) return null;
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} style={style}
+    >
+      {nodes.map(([tag, attrs], i) => React.createElement(tag, { key: i, ...attrs }))}
+    </svg>
+  );
+}
+
+/* -------------------------------- Gráficos -------------------------------- */
+/* Substituem o recharts (não disponível fora do artifact) por componentes
+   simples em CSS/SVG puro, mantendo a mesma linguagem visual do painel. */
+
+function BarListChart({ data, valueKey = 'valor', labelKey = 'name', colorFor }) {
+  const max = Math.max(1, ...data.map((d) => d[valueKey] || 0));
+  return (
+    <div className="space-y-2.5">
+      {data.map((d, i) => (
+        <div key={i}>
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="text-slate-600 truncate max-w-[65%]">{d[labelKey]}</span>
+            <span className="text-slate-500">{formatBRL(d[valueKey])}</span>
+          </div>
+          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{ width: `${((d[valueKey] || 0) / max) * 100}%`, background: colorFor ? colorFor(i) : '#059669' }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ColumnChart({ data, seriesKeys, seriesColors, stacked = false, height = 180 }) {
+  const totals = data.map((d) => (stacked
+    ? seriesKeys.reduce((s, k) => s + (d[k] || 0), 0)
+    : Math.max(0, ...seriesKeys.map((k) => d[k] || 0))));
+  const max = Math.max(1, ...totals);
+  return (
+    <div>
+      <div className="flex items-end gap-2" style={{ height }}>
+        {data.map((d, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end h-full min-w-0">
+            {stacked ? (
+              <div
+                className="w-full flex flex-col-reverse rounded-t-md overflow-hidden bg-slate-50"
+                style={{ height: `${Math.max((totals[i] / max) * 100, totals[i] > 0 ? 2 : 0)}%` }}
+              >
+                {seriesKeys.map((k) => (d[k] || 0) > 0 && (
+                  <div
+                    key={k}
+                    title={`${k}: ${formatBRL(d[k])}`}
+                    style={{ height: `${((d[k] || 0) / (totals[i] || 1)) * 100}%`, background: seriesColors[k] }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="w-full flex items-end justify-center gap-0.5 h-full">
+                {seriesKeys.map((k) => (
+                  <div
+                    key={k}
+                    title={`${k}: ${formatBRL(d[k])}`}
+                    className="flex-1 rounded-t-md transition-all"
+                    style={{ height: `${Math.max(((d[k] || 0) / max) * 100, (d[k] || 0) > 0 ? 2 : 0)}%`, background: seriesColors[k] }}
+                  />
+                ))}
+              </div>
+            )}
+            <span className="text-[10px] text-slate-400 mt-1 truncate max-w-full">{d.mes}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3 mt-3">
+        {seriesKeys.map((k) => (
+          <div key={k} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: seriesColors[k] }} /> {k}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LineChartSimple({ data, seriesKeys, seriesColors, seriesDash = {}, height = 200 }) {
+  const w = 600;
+  const h = height;
+  const pad = 20;
+  const maxX = Math.max(1, data.length - 1);
+  const allVals = data.flatMap((d) => seriesKeys.map((k) => d[k] || 0));
+  const maxY = Math.max(1, ...allVals);
+  const minY = Math.min(0, ...allVals);
+  const range = maxY - minY || 1;
+  const xScale = (i) => pad + (i / maxX) * (w - pad * 2);
+  const yScale = (v) => h - pad - ((v - minY) / range) * (h - pad * 2);
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} preserveAspectRatio="none">
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+          <line key={f} x1={pad} x2={w - pad} y1={pad + f * (h - pad * 2)} y2={pad + f * (h - pad * 2)} stroke="#ecfdf5" strokeWidth="1" />
+        ))}
+        {seriesKeys.map((k) => (
+          <polyline
+            key={k}
+            fill="none"
+            stroke={seriesColors[k]}
+            strokeWidth="2.5"
+            strokeDasharray={seriesDash[k] || undefined}
+            points={data.map((d, i) => `${xScale(i)},${yScale(d[k] || 0)}`).join(' ')}
+          />
+        ))}
+      </svg>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {seriesKeys.map((k) => (
+          <div key={k} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="w-3 h-0.5 rounded-full shrink-0" style={{ background: seriesColors[k] }} /> {k}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Constantes ----------------------------- */
+
+const CATEGORIAS_RECEBER = ['Receitas Day', 'Receitas Ycaro', 'Extras', 'Estornos', 'Resgates'];
+
+const CATEGORIAS_PAGAR = [
+  'Alimentação Casa', 'Alimentação fora + Lazer', 'Combustível', 'Contas de Consumo',
+  'Despesas Carro/Moto', 'Despesas com Aluguel', 'Despesas Gerais Casa', 'Despesas Lorena',
+  'Extras Ycaro', 'Extras Day', 'Reserva de Emergência', 'Viagens', 'Financiamentos',
+  'Investimentos', 'Casamento', 'Impostos', 'Dízimo',
+];
+
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+/* ------------------------------ Helpers -------------------------------- */
+
+const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+const formatBRL = (v) =>
+  (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const monthKey = (ano, mes) => `${ano}-${String(mes).padStart(2, '0')}`;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function getStatus(t) {
+  const today = todayStr();
+  if (t.quitado) return t.tipo === 'pagar' ? 'Pago' : 'Recebido';
+  if (t.data < today) return 'Em atraso';
+  return t.tipo === 'pagar' ? 'A pagar' : 'A receber';
+}
+
+function statusClasses(status) {
+  if (status === 'Pago' || status === 'Recebido') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (status === 'Em atraso') return 'bg-red-50 text-red-600 border-red-200';
+  return 'bg-amber-50 text-amber-700 border-amber-200';
+}
+
+function formatDateBR(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function addMonthsToDateStr(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1 + n, 1);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(day)}`;
+}
+
+/* --------------------------- Parsing de extrato --------------------------- */
+
+function parseValorLivre(raw) {
+  if (typeof raw === 'number') return raw;
+  if (!raw) return 0;
+  let s = String(raw).trim().replace(/[^0-9,.\-]/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function parseDataLivre(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = `20${y}`;
+    return `${y}-${pad2(mo)}-${pad2(d)}`;
+  }
+  return '';
+}
+
+function guessColIndex(headers, keywords) {
+  return headers.findIndex((h) => keywords.some((k) => String(h).toLowerCase().includes(k)));
+}
+
+const REGRAS_CATEGORIA = [
+  { padrao: /posto|combust|shell|ipiranga|petrobras|raizen|auto ?posto/i, categoria: 'Combustível' },
+  { padrao: /mercado|superm|hortifruti|atacad|hiper/i, categoria: 'Alimentação Casa' },
+  { padrao: /ifood|rappi|restaurant|lanchon|cinema|netflix|spotify|bar |cerveja|show|ingresso/i, categoria: 'Alimentação fora + Lazer' },
+  { padrao: /uber|99app|taxi|estacionament|oficina|auto ?pe[cç]as|pneu|mecanic/i, categoria: 'Despesas Carro/Moto' },
+  { padrao: /farmacia|drogaria|pet ?shop|veterinari/i, categoria: 'Despesas Gerais Casa' },
+  { padrao: /viagem|hotel|pousada|passagem|airbnb|decolar|latam|gol |azul /i, categoria: 'Viagens' },
+  { padrao: /imposto|iptu|ipva|darf|receita federal/i, categoria: 'Impostos' },
+  { padrao: /financiamento|parcela veiculo|consorcio/i, categoria: 'Financiamentos' },
+  { padrao: /loja|magazine|shopping|roupa|calcado/i, categoria: 'Extras Day' },
+];
+
+function sugerirCategoria(descricao) {
+  const found = REGRAS_CATEGORIA.find((r) => r.padrao.test(descricao || ''));
+  return found ? found.categoria : CATEGORIAS_PAGAR[0];
+}
+
+async function lerArquivoExtrato(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  let wb;
+  if (ext === 'csv') {
+    const text = await file.text();
+    wb = XLSX.read(text, { type: 'string' });
+  } else {
+    const buf = await file.arrayBuffer();
+    wb = XLSX.read(buf, { type: 'array' });
+  }
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+}
+
+/* ------------------------------ Fonte ----------------------------------- */
+
+function GlobalStyle() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+      .pf-root, .pf-root * { font-family: 'Poppins', sans-serif; }
+      .pf-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+      .pf-scroll::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 999px; }
+      input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+    `}</style>
+  );
+}
+
+/* ------------------------------- Átomos --------------------------------- */
+
+function Card({ children, className = '' }) {
+  return (
+    <div className={`bg-white rounded-2xl border border-emerald-100 shadow-sm shadow-emerald-900/5 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Badge({ status }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusClasses(status)}`}>
+      {status === 'Em atraso' && <Icon name="AlertTriangle" size={12} className="mr-1" />}
+      {status}
+    </span>
+  );
+}
+
+function SectionTitle({ icon, title, subtitle, right }) {
+  return (
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="flex items-center gap-2">
+        {icon && (
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+            <Icon name={icon} size={18} />
+          </div>
+        )}
+        <div>
+          <h3 className="text-[15px] font-semibold text-slate-800 leading-tight">{title}</h3>
+          {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+        </div>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="text-center py-10 text-sm text-slate-400">{text}</div>
+  );
+}
+
+/* --------------------------- Seletor de período -------------------------- */
+
+function MonthYearPicker({ mes, ano, onChange }) {
+  const go = (delta) => {
+    let m = mes + delta;
+    let y = ano;
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    onChange(m, y);
+  };
+  return (
+    <div className="flex items-center gap-1 bg-emerald-50 rounded-xl p-1">
+      <button onClick={() => go(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white text-emerald-700 transition">
+        <Icon name="ChevronLeft" size={16} />
+      </button>
+      <div className="px-2 text-sm font-medium text-emerald-800 min-w-[110px] text-center select-none">
+        {MESES[mes - 1]} {ano}
+      </div>
+      <button onClick={() => go(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white text-emerald-700 transition">
+        <Icon name="ChevronRight" size={16} />
+      </button>
+    </div>
+  );
+}
+
+/* --------------------------- Filtro multi-categoria ----------------------- */
+
+function CategoryMultiSelect({ categorias, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  const toggle = (cat) => {
+    if (selected.includes(cat)) onChange(selected.filter((c) => c !== cat));
+    else onChange([...selected, cat]);
+  };
+
+  const label = selected.length === 0 || selected.length === categorias.length
+    ? 'Todas as categorias'
+    : `${selected.length} categoria${selected.length > 1 ? 's' : ''}`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 text-sm bg-white border border-emerald-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 transition"
+      >
+        <Icon name="Filter" size={14} className="text-emerald-500" />
+        {label}
+        <Icon name="ChevronDown" size={14} className="text-slate-400" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-2 w-64 bg-white border border-emerald-100 rounded-xl shadow-lg p-2 max-h-72 overflow-y-auto pf-scroll">
+          <button
+            onClick={() => onChange([])}
+            className="w-full text-left text-xs font-medium text-emerald-600 px-2 py-1.5 hover:bg-emerald-50 rounded-lg mb-1"
+          >
+            Limpar seleção (todas)
+          </button>
+          {categorias.map((cat) => (
+            <label key={cat} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-emerald-50 cursor-pointer text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={selected.includes(cat)}
+                onChange={() => toggle(cat)}
+                className="accent-emerald-600 w-4 h-4"
+              />
+              {cat}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ Modal lançamento -------------------------- */
+
+function TransactionModal({ open, onClose, onSave, categorias, tipo, initial }) {
+  const blank = {
+    descricao: '', categoria: categorias[0], valor: '', data: todayStr(), quitado: false,
+  };
+  const [form, setForm] = useState(blank);
+  const [recorrente, setRecorrente] = useState(false);
+  const [meses, setMeses] = useState(12);
+
+  useEffect(() => {
+    if (open) {
+      setForm(initial ? { ...initial, valor: String(initial.valor) } : blank);
+      setRecorrente(false);
+      setMeses(12);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
+
+  if (!open) return null;
+
+  const valid = form.descricao.trim() && form.categoria && Number(form.valor) > 0 && form.data;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({
+      ...form,
+      valor: Number(form.valor),
+      tipo,
+    }, recorrente ? meses : 0);
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">
+            {initial ? 'Editar lançamento' : 'Novo lançamento'}
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Descrição</label>
+            <input
+              value={form.descricao}
+              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+              placeholder={tipo === 'pagar' ? 'Ex: Supermercado, Aluguel...' : 'Ex: Salário, Freela...'}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500">Categoria</label>
+            <select
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300 bg-white"
+            >
+              {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Valor (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.valor}
+                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Data</label>
+              <input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm({ ...form, data: e.target.value })}
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-600 pt-1">
+            <input
+              type="checkbox"
+              checked={form.quitado}
+              onChange={(e) => setForm({ ...form, quitado: e.target.checked })}
+              className="accent-emerald-600 w-4 h-4"
+            />
+            Já {tipo === 'pagar' ? 'foi pago' : 'foi recebido'}
+          </label>
+
+          {!initial && (
+            <div className="border border-emerald-100 bg-emerald-50/50 rounded-xl p-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={recorrente}
+                  onChange={(e) => setRecorrente(e.target.checked)}
+                  className="accent-emerald-600 w-4 h-4"
+                />
+                <Icon name="Repeat" size={14} className="text-emerald-600" />
+                Repetir todo mês
+              </label>
+              {recorrente && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+                  Por
+                  <input
+                    type="number" min="1" max="60" value={meses}
+                    onChange={(e) => setMeses(Number(e.target.value))}
+                    className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center"
+                  />
+                  meses (incluindo este)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ Tabela de contas -------------------------- */
+
+function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQuitado, onDuplicate, onDelete }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth() + 1);
+  const [ano, setAno] = useState(now.getFullYear());
+  const [categoriasSel, setCategoriasSel] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const mk = monthKey(ano, mes);
+
+  const doTipo = useMemo(
+    () => lancamentos.filter((t) => t.tipo === tipo),
+    [lancamentos, tipo],
+  );
+
+  const doMes = useMemo(
+    () => doTipo.filter((t) => t.data.slice(0, 7) === mk),
+    [doTipo, mk],
+  );
+
+  const filtrados = useMemo(() => {
+    let list = doMes;
+    if (categoriasSel.length > 0) list = list.filter((t) => categoriasSel.includes(t.categoria));
+    return [...list].sort((a, b) => a.data.localeCompare(b.data));
+  }, [doMes, categoriasSel]);
+
+  const previsaoPorCategoria = useMemo(() => {
+    const map = {};
+    categorias.forEach((c) => { map[c] = 0; });
+    doMes.forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
+    return map;
+  }, [doMes, categorias]);
+
+  const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
+
+  const openNew = () => { setEditing(null); setModalOpen(true); };
+  const openEdit = (t) => { setEditing(t); setModalOpen(true); };
+
+  const handleSave = (data, meses) => {
+    if (editing) {
+      onEdit({ ...editing, ...data });
+    } else if (meses > 1) {
+      const recorrenciaId = uid();
+      const novos = Array.from({ length: meses }, (_, i) => ({
+        ...data,
+        id: uid(),
+        data: addMonthsToDateStr(data.data, i),
+        recorrenciaId,
+      }));
+      onAdd(novos);
+    } else {
+      onAdd([{ ...data, id: uid() }]);
+    }
+    setModalOpen(false);
+  };
+
+  const corValor = tipo === 'pagar' ? 'text-red-500' : 'text-emerald-600';
+
+  return (
+    <div className="pb-24">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+        <CategoryMultiSelect categorias={categorias} selected={categoriasSel} onChange={setCategoriasSel} />
+      </div>
+
+      <Card className="p-4 mb-4">
+        <SectionTitle
+          icon={tipo === 'pagar' ? 'ArrowUpCircle' : 'ArrowDownCircle'}
+          title={tipo === 'pagar' ? 'Previsão de despesas do mês' : 'Previsão de receita do mês'}
+          subtitle={`${MESES[mes - 1]} ${ano}`}
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {categorias.map((c) => (
+            previsaoPorCategoria[c] > 0 && (
+              <div key={c} className="bg-emerald-50/60 rounded-xl px-3 py-2">
+                <div className="text-[11px] text-slate-500 truncate">{c}</div>
+                <div className="text-sm font-semibold text-slate-700">{formatBRL(previsaoPorCategoria[c])}</div>
+              </div>
+            )
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-emerald-100">
+          <span className="text-sm font-medium text-slate-500">Total do período</span>
+          <span className={`text-lg font-semibold ${corValor}`}>{formatBRL(totalMes)}</span>
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="p-4 pb-0 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-700">Lançamentos</h3>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition"
+          >
+            <Icon name="Plus" size={14} /> Novo
+          </button>
+        </div>
+
+        {filtrados.length === 0 ? (
+          <EmptyState text="Nenhum lançamento neste período." />
+        ) : (
+          <div className="overflow-x-auto pf-scroll mt-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
+                  <th className="px-4 py-2 font-medium">Quitado</th>
+                  <th className="px-2 py-2 font-medium">Data</th>
+                  <th className="px-2 py-2 font-medium">Descrição</th>
+                  <th className="px-2 py-2 font-medium hidden sm:table-cell">Categoria</th>
+                  <th className="px-2 py-2 font-medium text-right">Valor</th>
+                  <th className="px-2 py-2 font-medium">Status</th>
+                  <th className="px-2 py-2 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map((t) => {
+                  const status = getStatus(t);
+                  return (
+                    <tr key={t.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => onToggleQuitado(t)}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${t.quitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
+                        >
+                          <Icon name="Check" size={14} />
+                        </button>
+                      </td>
+                      <td className="px-2 py-2.5 whitespace-nowrap text-slate-500">{formatDateBR(t.data)}</td>
+                      <td className="px-2 py-2.5 text-slate-700 max-w-[160px] truncate">{t.descricao}</td>
+                      <td className="px-2 py-2.5 hidden sm:table-cell text-slate-500">{t.categoria}</td>
+                      <td className={`px-2 py-2.5 text-right font-medium whitespace-nowrap ${corValor}`}>{formatBRL(t.valor)}</td>
+                      <td className="px-2 py-2.5"><Badge status={status} /></td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => openEdit(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                            <Icon name="Pencil" size={13} />
+                          </button>
+                          <button onClick={() => onDuplicate(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                            <Icon name="Copy" size={13} />
+                          </button>
+                          <button onClick={() => onDelete(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+                            <Icon name="Trash2" size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <TransactionModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={handleSave}
+        categorias={categorias}
+        tipo={tipo}
+        initial={editing}
+      />
+    </div>
+  );
+}
+
+/* --------------------------------- Dashboard ------------------------------ */
+
+function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSaldoInicial }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth() + 1);
+  const [ano, setAno] = useState(now.getFullYear());
+  const [statusFiltro, setStatusFiltro] = useState('todos'); // todos | quitado | pendente
+  const [fluxoFiltro, setFluxoFiltro] = useState('tudo'); // tudo | quitado | aquitar
+
+  const mk = monthKey(ano, mes);
+
+  const doMes = useMemo(() => lancamentos.filter((t) => t.data.slice(0, 7) === mk), [lancamentos, mk]);
+
+  const passaFiltroStatus = (t) => {
+    if (statusFiltro === 'todos') return true;
+    if (statusFiltro === 'quitado') return t.quitado;
+    return !t.quitado;
+  };
+
+  const totalReceber = doMes.filter((t) => t.tipo === 'receber' && passaFiltroStatus(t)).reduce((s, t) => s + t.valor, 0);
+  const totalPagar = doMes.filter((t) => t.tipo === 'pagar' && passaFiltroStatus(t)).reduce((s, t) => s + t.valor, 0);
+  const saldoPeriodo = totalReceber - totalPagar;
+
+  // Top fornecedores (despesas por descrição)
+  const porFornecedor = useMemo(() => {
+    const map = {};
+    doMes.filter((t) => t.tipo === 'pagar').forEach((t) => {
+      map[t.descricao] = (map[t.descricao] || 0) + t.valor;
+    });
+    return Object.entries(map)
+      .map(([name, valor]) => ({ name, valor }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 8);
+  }, [doMes]);
+
+  // Dízimo
+  const totalReceitasLancadas = doMes.filter((t) => t.tipo === 'receber').reduce((s, t) => s + t.valor, 0);
+  const dizimoEsperado = totalReceitasLancadas * 0.10;
+  const dizimoPago = doMes.filter((t) => t.tipo === 'pagar' && t.categoria === 'Dízimo' && t.quitado).reduce((s, t) => s + t.valor, 0);
+  const dizimoFalta = Math.max(dizimoEsperado - dizimoPago, 0);
+  const dizimoPct = dizimoEsperado > 0 ? Math.min((dizimoPago / dizimoEsperado) * 100, 100) : 0;
+
+  // Orçado x Realizado
+  const todasCategorias = [
+    ...CATEGORIAS_RECEBER.map((c) => ({ categoria: c, tipo: 'receber' })),
+    ...CATEGORIAS_PAGAR.map((c) => ({ categoria: c, tipo: 'pagar' })),
+  ];
+  const realizadoPorCategoria = useMemo(() => {
+    const map = {};
+    doMes.forEach((t) => {
+      if (!t.quitado) return;
+      const key = `${t.tipo}:${t.categoria}`;
+      map[key] = (map[key] || 0) + t.valor;
+    });
+    return map;
+  }, [doMes]);
+
+  const linhasOrcamento = todasCategorias
+    .map(({ categoria, tipo }) => {
+      const orcado = orcamentos?.[categoria]?.[mk] ?? 0;
+      const realizado = realizadoPorCategoria[`${tipo}:${categoria}`] || 0;
+      return { categoria, tipo, orcado, realizado };
+    })
+    .filter((l) => l.orcado > 0 || l.realizado > 0);
+
+  // Fluxo de caixa diário
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  const saldoInicial = config?.saldoInicial?.[mk] ?? 0;
+
+  const passaFluxo = (t) => {
+    if (fluxoFiltro === 'tudo') return true;
+    if (fluxoFiltro === 'quitado') return t.quitado;
+    return !t.quitado;
+  };
+
+  const fluxo = useMemo(() => {
+    let acumulado = saldoInicial;
+    const linhas = [];
+    for (let d = 1; d <= diasNoMes; d += 1) {
+      const dataStr = `${ano}-${pad2(mes)}-${pad2(d)}`;
+      const doDia = doMes.filter((t) => t.data === dataStr && passaFluxo(t));
+      const entradas = doDia.filter((t) => t.tipo === 'receber').reduce((s, t) => s + t.valor, 0);
+      const saidas = doDia.filter((t) => t.tipo === 'pagar').reduce((s, t) => s + t.valor, 0);
+      const saldoDia = entradas - saidas;
+      acumulado += saldoDia;
+      linhas.push({ dia: d, dataStr, entradas, saidas, saldoDia, acumulado });
+    }
+    return linhas;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doMes, diasNoMes, ano, mes, saldoInicial, fluxoFiltro]);
+
+  return (
+    <div className="pb-24 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+        <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+          {[
+            { v: 'todos', l: 'Tudo' },
+            { v: 'quitado', l: 'Pago/Recebido' },
+            { v: 'pendente', l: 'A pagar/receber' },
+          ].map((op) => (
+            <button
+              key={op.v}
+              onClick={() => setStatusFiltro(op.v)}
+              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+            >
+              {op.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cards resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="p-4">
+          <div className="flex items-center gap-2 text-emerald-600 text-xs font-medium mb-1">
+            <Icon name="ArrowDownCircle" size={14} /> Receitas
+          </div>
+          <div className="text-xl font-semibold text-slate-800">{formatBRL(totalReceber)}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 text-red-500 text-xs font-medium mb-1">
+            <Icon name="ArrowUpCircle" size={14} /> Despesas
+          </div>
+          <div className="text-xl font-semibold text-slate-800">{formatBRL(totalPagar)}</div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
+            <Icon name="Wallet" size={14} /> Saldo do período
+          </div>
+          <div className={`text-xl font-semibold ${saldoPeriodo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+            {formatBRL(saldoPeriodo)}
+          </div>
+        </Card>
+      </div>
+
+      {/* Fornecedores */}
+      <Card className="p-4">
+        <SectionTitle icon="TrendingUp" title="Maiores despesas por fornecedor" subtitle="Top 8 no período" />
+        {porFornecedor.length === 0 ? <EmptyState text="Sem despesas lançadas neste mês." /> : (
+          <BarListChart data={porFornecedor} valueKey="valor" labelKey="name" colorFor={(i) => (i === 0 ? '#059669' : '#6ee7b7')} />
+        )}
+      </Card>
+
+      {/* Dízimo */}
+      <Card className="p-4">
+        <SectionTitle icon="HeartHandshake" title="Dízimo do mês" subtitle="10% das receitas lançadas em Contas a Receber" />
+        <div className="flex items-center justify-between text-sm mb-2">
+          <span className="text-slate-500">Esperado: <b className="text-slate-700">{formatBRL(dizimoEsperado)}</b></span>
+          <span className="text-slate-500">Pago: <b className="text-emerald-600">{formatBRL(dizimoPago)}</b></span>
+        </div>
+        <div className="w-full h-2.5 bg-emerald-50 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${dizimoPct}%` }} />
+        </div>
+        <div className="mt-2 text-xs">
+          {dizimoFalta > 0
+            ? <span className="text-amber-600 font-medium">Falta {formatBRL(dizimoFalta)} para completar o dízimo do mês.</span>
+            : <span className="text-emerald-600 font-medium">Dízimo do mês em dia. 🎉</span>}
+        </div>
+      </Card>
+
+      {/* Orçado x Realizado */}
+      <Card className="p-4">
+        <SectionTitle icon="LayoutDashboard" title="Orçado x Realizado" subtitle="Clique no valor orçado para editar" />
+        {linhasOrcamento.length === 0 ? (
+          <EmptyState text="Defina um orçamento por categoria abaixo para começar a comparar." />
+        ) : (
+          <div className="space-y-2 mb-3">
+            {linhasOrcamento.map((l) => {
+              const isDespesa = l.tipo === 'pagar';
+              const estourou = isDespesa && l.orcado > 0 && l.realizado > l.orcado;
+              const pct = l.orcado > 0 ? Math.min((l.realizado / l.orcado) * 100, 100) : 0;
+              return (
+                <div key={`${l.tipo}-${l.categoria}`}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-600">{l.categoria}</span>
+                    <span className={estourou ? 'text-red-500 font-medium' : 'text-slate-500'}>
+                      {formatBRL(l.realizado)} / {formatBRL(l.orcado)}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${estourou ? 'bg-red-500' : isDespesa ? 'bg-emerald-500' : 'bg-emerald-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <details className="mt-3 group">
+          <summary className="text-xs font-medium text-emerald-600 cursor-pointer select-none list-none flex items-center gap-1">
+            <Icon name="ChevronDown" size={13} className="transition group-open:rotate-180" /> Editar orçamentos por categoria
+          </summary>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pf-scroll pr-1">
+            {todasCategorias.map(({ categoria }) => (
+              <div key={categoria} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5">
+                <span className="text-xs text-slate-500 truncate">{categoria}</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  defaultValue={orcamentos?.[categoria]?.[mk] ?? ''}
+                  onBlur={(e) => onSetOrcamento(categoria, mk, Number(e.target.value) || 0)}
+                  placeholder="0,00"
+                  className="w-24 text-xs text-right border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-300"
+                />
+              </div>
+            ))}
+          </div>
+        </details>
+      </Card>
+
+      {/* Fluxo de caixa */}
+      <Card className="p-4">
+        <SectionTitle icon="Wallet" title="Fluxo de caixa diário" subtitle={`${MESES[mes - 1]} ${ano}`} />
+
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500">Saldo inicial do mês</span>
+            <input
+              type="number" step="0.01"
+              defaultValue={saldoInicial}
+              onBlur={(e) => onSetSaldoInicial(mk, Number(e.target.value) || 0)}
+              className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-emerald-300"
+            />
+          </div>
+          <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium ml-auto">
+            {[
+              { v: 'tudo', l: 'Tudo' },
+              { v: 'quitado', l: 'Quitado' },
+              { v: 'aquitar', l: 'A quitar' },
+            ].map((op) => (
+              <button
+                key={op.v}
+                onClick={() => setFluxoFiltro(op.v)}
+                className={`px-2.5 py-1.5 rounded-lg transition ${fluxoFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              >
+                {op.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                <th className="px-2 py-2">Dia</th>
+                <th className="px-2 py-2 text-right">Entradas</th>
+                <th className="px-2 py-2 text-right">Saídas</th>
+                <th className="px-2 py-2 text-right">Saldo do dia</th>
+                <th className="px-2 py-2 text-right">Acumulado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fluxo.map((l) => (
+                <tr key={l.dia} className={`border-b border-slate-50 ${l.dataStr === todayStr() ? 'bg-emerald-50/60' : ''}`}>
+                  <td className="px-2 py-1.5 text-slate-500 whitespace-nowrap">{pad2(l.dia)}/{pad2(mes)}</td>
+                  <td className="px-2 py-1.5 text-right text-emerald-600">{l.entradas > 0 ? formatBRL(l.entradas) : '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-red-500">{l.saidas > 0 ? formatBRL(l.saidas) : '—'}</td>
+                  <td className={`px-2 py-1.5 text-right font-medium ${l.saldoDia < 0 ? 'text-red-500' : 'text-slate-600'}`}>{formatBRL(l.saldoDia)}</td>
+                  <td className={`px-2 py-1.5 text-right font-semibold ${l.acumulado < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                    {formatBRL(l.acumulado)}
+                    {l.acumulado < 0 && <Icon name="AlertTriangle" size={11} className="inline ml-1 -mt-0.5" />}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* --------------------------------- Sonhos & Metas -------------------------- */
+
+function monthsUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date();
+  const target = new Date(`${dateStr}T00:00:00`);
+  let months = (target.getFullYear() - today.getFullYear()) * 12 + (target.getMonth() - today.getMonth());
+  if (target.getDate() < today.getDate()) months -= 1;
+  return months;
+}
+
+function MetaModal({ open, onClose, onSave, initial }) {
+  const blank = { nome: '', valorAlvo: '', valorAtual: '', prazo: '' };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => {
+    if (open) {
+      setForm(initial
+        ? { ...initial, valorAlvo: String(initial.valorAlvo), valorAtual: String(initial.valorAtual) }
+        : blank);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
+
+  if (!open) return null;
+
+  const valid = form.nome.trim() && Number(form.valorAlvo) > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({
+      ...form,
+      valorAlvo: Number(form.valorAlvo),
+      valorAtual: Number(form.valorAtual) || 0,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">
+            {initial ? 'Editar meta' : 'Nova meta ou sonho'}
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Nome do sonho / meta</label>
+            <input
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              placeholder="Ex: Viagem para a praia, Carro novo..."
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Valor necessário (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.valorAlvo}
+                onChange={(e) => setForm({ ...form, valorAlvo: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Já reservado (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.valorAtual}
+                onChange={(e) => setForm({ ...form, valorAtual: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500">Prazo (opcional)</label>
+            <input
+              type="date"
+              value={form.prazo}
+              onChange={(e) => setForm({ ...form, prazo: e.target.value })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AporteModal({ open, onClose, onSave, meta }) {
+  const [valor, setValor] = useState('');
+
+  useEffect(() => { if (open) setValor(''); }, [open]);
+
+  if (!open || !meta) return null;
+
+  const submit = () => {
+    const v = Number(valor);
+    if (!v) return;
+    onSave(meta, v);
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">Atualizar "{meta.nome}"</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <label className="text-xs font-medium text-slate-500">Valor a somar (use negativo para retirar)</label>
+        <input
+          type="number" step="0.01" autoFocus
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="0,00"
+          className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+        />
+        <p className="text-[11px] text-slate-400 mt-1">Reservado hoje: {formatBRL(meta.valorAtual)}</p>
+        <button
+          onClick={submit}
+          disabled={!Number(valor)}
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Confirmar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MetaCard({ meta, onEdit, onDelete, onAportar }) {
+  const pct = meta.valorAlvo > 0 ? Math.min((meta.valorAtual / meta.valorAlvo) * 100, 100) : 0;
+  const concluida = meta.valorAtual >= meta.valorAlvo;
+  const faltando = Math.max(meta.valorAlvo - meta.valorAtual, 0);
+  const meses = monthsUntil(meta.prazo);
+  const atrasada = meses !== null && meses < 0 && !concluida;
+  const porMes = meses && meses > 0 ? faltando / meses : null;
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-800">{meta.nome}</h4>
+          {meta.prazo && (
+            <div className={`flex items-center gap-1 text-[11px] mt-0.5 ${atrasada ? 'text-red-500' : 'text-slate-400'}`}>
+              <Icon name="CalendarClock" size={11} />
+              {atrasada ? 'Prazo vencido' : `Até ${formatDateBR(meta.prazo)}`}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => onEdit(meta)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+            <Icon name="Pencil" size={13} />
+          </button>
+          <button onClick={() => onDelete(meta)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+            <Icon name="Trash2" size={13} />
+          </button>
+        </div>
+      </div>
+
+      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+        <div
+          className={`h-full rounded-full ${concluida ? 'bg-emerald-500' : 'bg-emerald-400'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <div className="flex items-center justify-between text-xs mb-3">
+        <span className="text-slate-500">{formatBRL(meta.valorAtual)} de {formatBRL(meta.valorAlvo)}</span>
+        <span className="font-medium text-emerald-600">{pct.toFixed(0)}%</span>
+      </div>
+
+      {concluida ? (
+        <div className="text-xs font-medium text-emerald-600 bg-emerald-50 rounded-lg px-2.5 py-1.5 inline-block">
+          Meta concluída! 🎉
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] text-slate-400">
+            Faltam {formatBRL(faltando)}
+            {porMes != null && !atrasada && <> · ~{formatBRL(porMes)}/mês</>}
+          </div>
+          <button
+            onClick={() => onAportar(meta)}
+            className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition"
+          >
+            <Icon name="PiggyBank" size={13} /> Atualizar
+          </button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [aportando, setAportando] = useState(null);
+
+  const totalAlvo = metas.reduce((s, m) => s + m.valorAlvo, 0);
+  const totalAtual = metas.reduce((s, m) => s + m.valorAtual, 0);
+  const pctGeral = totalAlvo > 0 ? Math.min((totalAtual / totalAlvo) * 100, 100) : 0;
+
+  const openNew = () => { setEditing(null); setModalOpen(true); };
+  const openEdit = (m) => { setEditing(m); setModalOpen(true); };
+
+  const handleSave = (data) => {
+    if (editing) onEdit({ ...editing, ...data });
+    else onAdd({ ...data, id: uid() });
+    setModalOpen(false);
+  };
+
+  const handleDelete = (m) => {
+    if (window.confirm && !window.confirm(`Excluir a meta "${m.nome}"?`)) return;
+    onDelete(m);
+  };
+
+  const handleAporte = (meta, valor) => {
+    const novoValor = Math.max((meta.valorAtual || 0) + valor, 0);
+    onAportar({ ...meta, valorAtual: novoValor });
+    setAportando(null);
+  };
+
+  return (
+    <div className="pb-24">
+      <Card className="p-4 mb-4">
+        <SectionTitle
+          icon="Sparkles"
+          title="Sonhos & Metas da família"
+          subtitle={`${metas.length} meta${metas.length !== 1 ? 's' : ''} cadastrada${metas.length !== 1 ? 's' : ''}`}
+        />
+        {metas.length > 0 && (
+          <>
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-slate-500">Reservado: <b className="text-emerald-600">{formatBRL(totalAtual)}</b></span>
+              <span className="text-slate-500">Meta total: <b className="text-slate-700">{formatBRL(totalAlvo)}</b></span>
+            </div>
+            <div className="w-full h-2.5 bg-emerald-50 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pctGeral}%` }} />
+            </div>
+          </>
+        )}
+        <button
+          onClick={openNew}
+          className="flex items-center justify-center gap-1.5 w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
+        >
+          <Icon name="Plus" size={15} /> Nova meta ou sonho
+        </button>
+      </Card>
+
+      {metas.length === 0 ? (
+        <EmptyState text="Cadastre o primeiro sonho ou meta da família." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {metas.map((m) => (
+            <MetaCard key={m.id} meta={m} onEdit={openEdit} onDelete={handleDelete} onAportar={setAportando} />
+          ))}
+        </div>
+      )}
+
+      <MetaModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} />
+      <AporteModal open={!!aportando} onClose={() => setAportando(null)} onSave={handleAporte} meta={aportando} />
+    </div>
+  );
+}
+
+/* --------------------------------- Cartão de Crédito ------------------------ */
+
+function ImportarExtrato({ onConfirm }) {
+  const [rows, setRows] = useState(null); // array de arrays cru
+  const [headerRow, setHeaderRow] = useState(1);
+  const [colData, setColData] = useState(-1);
+  const [colDesc, setColDesc] = useState(-1);
+  const [colValor, setColValor] = useState(-1);
+  const [linhas, setLinhas] = useState([]); // preview editável
+  const [erro, setErro] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const fileRef = useRef(null);
+
+  const headers = rows ? (rows[headerRow - 1] || []) : [];
+  const dataRows = rows ? rows.slice(headerRow) : [];
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setErro(null);
+    setCarregando(true);
+    try {
+      const parsed = await lerArquivoExtrato(file);
+      if (!parsed || parsed.length === 0) throw new Error('vazio');
+      setRows(parsed);
+      const h = parsed[0] || [];
+      const cD = guessColIndex(h, ['data', 'date', 'dt ']);
+      const cDesc = guessColIndex(h, ['descri', 'histor', 'estabelec', 'lançamento', 'lancamento']);
+      const cV = guessColIndex(h, ['valor', 'amount', 'r$']);
+      setColData(cD);
+      setColDesc(cDesc);
+      setColValor(cV);
+      setHeaderRow(1);
+    } catch (e) {
+      setErro('Não consegui ler esse arquivo. Confirme se é um .xlsx, .xls ou .csv válido.');
+      setRows(null);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!rows || colData < 0 || colDesc < 0 || colValor < 0) { setLinhas([]); return; }
+    const novas = dataRows
+      .filter((r) => r && r.some((c) => String(c).trim() !== ''))
+      .map((r) => {
+        const data = parseDataLivre(r[colData]);
+        const descricao = String(r[colDesc] || '').trim();
+        const valor = parseValorLivre(r[colValor]);
+        return {
+          id: uid(),
+          data,
+          descricao,
+          valorAbs: Math.abs(valor),
+          valorOriginal: valor,
+          categoria: sugerirCategoria(descricao),
+          incluir: valor !== 0 && !!data && !!descricao,
+        };
+      });
+    setLinhas(novas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, headerRow, colData, colDesc, colValor]);
+
+  const reset = () => {
+    setRows(null); setLinhas([]); setErro(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const totalSelecionado = linhas.filter((l) => l.incluir).reduce((s, l) => s + l.valorAbs, 0);
+  const qtdSelecionada = linhas.filter((l) => l.incluir).length;
+
+  const confirmar = () => {
+    const selecionadas = linhas.filter((l) => l.incluir && l.data && l.valorAbs > 0);
+    if (selecionadas.length === 0) return;
+    onConfirm(selecionadas.map((l) => ({
+      id: uid(), data: l.data, descricao: l.descricao, valor: l.valorAbs, categoria: l.categoria,
+    })));
+    reset();
+  };
+
+  return (
+    <Card className="p-4">
+      <SectionTitle
+        icon="UploadCloud"
+        title="Importar extrato do cartão"
+        subtitle="Aceita planilha Excel (.xlsx/.xls) ou CSV"
+      />
+
+      {!rows && (
+        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-emerald-200 rounded-2xl py-10 cursor-pointer hover:bg-emerald-50/40 transition text-center px-4">
+          <Icon name="FileSpreadsheet" size={26} className="text-emerald-400" />
+          <span className="text-sm text-slate-600 font-medium">
+            {carregando ? 'Lendo arquivo…' : 'Toque para escolher o arquivo do extrato'}
+          </span>
+          <span className="text-xs text-slate-400">.xlsx, .xls ou .csv</span>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+        </label>
+      )}
+
+      {erro && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-600 text-xs rounded-xl px-3 py-2.5 mt-3">
+          <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" /> {erro}
+        </div>
+      )}
+
+      {rows && (
+        <div className="mt-1">
+          <div className="flex flex-wrap items-end gap-3 mb-4 bg-emerald-50/50 rounded-xl p-3">
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Linha do cabeçalho</label>
+              <input
+                type="number" min="1" max={rows.length}
+                value={headerRow}
+                onChange={(e) => setHeaderRow(Math.max(1, Number(e.target.value) || 1))}
+                className="block w-20 mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Coluna da data</label>
+              <select value={colData} onChange={(e) => setColData(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+                <option value={-1}>Selecione…</option>
+                {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Coluna da descrição</label>
+              <select value={colDesc} onChange={(e) => setColDesc(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+                <option value={-1}>Selecione…</option>
+                {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Coluna do valor</label>
+              <select value={colValor} onChange={(e) => setColValor(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+                <option value={-1}>Selecione…</option>
+                {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
+              </select>
+            </div>
+            <button onClick={reset} className="text-xs text-slate-400 hover:text-red-500 ml-auto">Cancelar</button>
+          </div>
+
+          {colData < 0 || colDesc < 0 || colValor < 0 ? (
+            <EmptyState text="Selecione as três colunas acima para pré-visualizar os lançamentos." />
+          ) : linhas.length === 0 ? (
+            <EmptyState text="Nenhuma linha válida encontrada com essas colunas." />
+          ) : (
+            <>
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-700 text-xs rounded-xl px-3 py-2.5 mb-3">
+                <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
+                Confira e ajuste a categoria de cada linha antes de confirmar — a sugestão é automática e pode errar.
+              </div>
+              <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                      <th className="px-3 py-2">Incluir</th>
+                      <th className="px-2 py-2">Data</th>
+                      <th className="px-2 py-2">Descrição</th>
+                      <th className="px-2 py-2 text-right">Valor</th>
+                      <th className="px-2 py-2">Categoria</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linhas.map((l, i) => (
+                      <tr key={l.id} className={`border-b border-slate-50 ${!l.incluir ? 'opacity-40' : ''}`}>
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={l.incluir}
+                            onChange={(e) => setLinhas((prev) => prev.map((x, xi) => (xi === i ? { ...x, incluir: e.target.checked } : x)))}
+                            className="accent-emerald-600 w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">{l.data ? formatDateBR(l.data) : <span className="text-red-400">inválida</span>}</td>
+                        <td className="px-2 py-1.5 text-slate-700 max-w-[180px] truncate">{l.descricao}</td>
+                        <td className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${l.valorOriginal < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {formatBRL(l.valorAbs)}{l.valorOriginal < 0 && ' (crédito)'}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={l.categoria}
+                            onChange={(e) => setLinhas((prev) => prev.map((x, xi) => (xi === i ? { ...x, categoria: e.target.value } : x)))}
+                            className="border border-slate-200 rounded-lg px-1.5 py-1 text-xs bg-white max-w-[150px]"
+                          >
+                            {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-xs text-slate-500">{qtdSelecionada} lançamento{qtdSelecionada !== 1 ? 's' : ''} selecionado{qtdSelecionada !== 1 ? 's' : ''} · {formatBRL(totalSelecionado)}</span>
+                <button
+                  onClick={confirmar}
+                  disabled={qtdSelecionada === 0}
+                  className="bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-emerald-700 transition"
+                >
+                  Confirmar importação
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth() + 1);
+  const [ano, setAno] = useState(now.getFullYear());
+  const mk = monthKey(ano, mes);
+
+  const doMes = useMemo(() => [...transacoes.filter((t) => t.data.slice(0, 7) === mk)].sort((a, b) => a.data.localeCompare(b.data)), [transacoes, mk]);
+  const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
+
+  // últimos 6 meses para comparativo
+  const ultimosMeses = useMemo(() => {
+    const arr = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(ano, mes - 1 - i, 1);
+      arr.push({ mk: monthKey(d.getFullYear(), d.getMonth() + 1), label: `${MESES[d.getMonth()].slice(0, 3)}/${String(d.getFullYear()).slice(2)}` });
+    }
+    return arr;
+  }, [ano, mes]);
+
+  const topCategorias = useMemo(() => {
+    const totals = {};
+    transacoes.forEach((t) => { totals[t.categoria] = (totals[t.categoria] || 0) + t.valor; });
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c]) => c);
+  }, [transacoes]);
+
+  const dadosComparativo = useMemo(() => ultimosMeses.map(({ mk: k, label }) => {
+    const row = { mes: label };
+    topCategorias.forEach((c) => {
+      row[c] = transacoes.filter((t) => t.data.slice(0, 7) === k && t.categoria === c).reduce((s, t) => s + t.valor, 0);
+    });
+    return row;
+  }), [ultimosMeses, topCategorias, transacoes]);
+
+  const CORES = ['#059669', '#34d399', '#a7f3d0', '#fbbf24', '#f87171'];
+
+  const orcadoRealizado = useMemo(() => {
+    const map = {};
+    doMes.forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
+    return CATEGORIAS_PAGAR
+      .map((c) => ({ categoria: c, realizado: map[c] || 0, orcado: orcamentos?.[c]?.[mk] ?? 0 }))
+      .filter((l) => l.realizado > 0 || l.orcado > 0);
+  }, [doMes, orcamentos, mk]);
+
+  return (
+    <div className="pb-24 space-y-4">
+      <ImportarExtrato onConfirm={onImport} />
+
+      <div className="flex items-center justify-between">
+        <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+        <div className="text-sm text-slate-500">Total no mês: <b className="text-red-500">{formatBRL(totalMes)}</b></div>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="p-4 pb-0"><h3 className="text-sm font-semibold text-slate-700">Lançamentos da fatura</h3></div>
+        {doMes.length === 0 ? (
+          <EmptyState text="Nenhum lançamento do cartão importado neste mês." />
+        ) : (
+          <div className="overflow-x-auto pf-scroll mt-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
+                  <th className="px-4 py-2 font-medium">Data</th>
+                  <th className="px-2 py-2 font-medium">Descrição</th>
+                  <th className="px-2 py-2 font-medium">Categoria</th>
+                  <th className="px-2 py-2 font-medium text-right">Valor</th>
+                  <th className="px-2 py-2 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {doMes.map((t) => (
+                  <tr key={t.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
+                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">{formatDateBR(t.data)}</td>
+                    <td className="px-2 py-2.5 text-slate-700 max-w-[160px] truncate">{t.descricao}</td>
+                    <td className="px-2 py-2.5">
+                      <select
+                        value={t.categoria}
+                        onChange={(e) => onEditCategoria({ ...t, categoria: e.target.value })}
+                        className="border border-slate-200 rounded-lg px-1.5 py-1 text-xs bg-white"
+                      >
+                        {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-2 py-2.5 text-right font-medium text-red-500 whitespace-nowrap">{formatBRL(t.valor)}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <button onClick={() => onDelete(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+                        <Icon name="Trash2" size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <SectionTitle icon="TrendingUp" title="Comparativo por categoria" subtitle="Últimos 6 meses · top 5 categorias no cartão" />
+        {topCategorias.length === 0 ? <EmptyState text="Importe um extrato para ver o comparativo." /> : (
+          <ColumnChart
+            data={dadosComparativo}
+            seriesKeys={topCategorias}
+            seriesColors={Object.fromEntries(topCategorias.map((c, i) => [c, CORES[i % CORES.length]]))}
+            stacked
+            height={200}
+          />
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <SectionTitle icon="LayoutDashboard" title="Orçado x Realizado no cartão" subtitle="Quanto do orçamento da categoria já foi gasto no cartão este mês" />
+        {orcadoRealizado.length === 0 ? <EmptyState text="Sem gastos de cartão neste mês." /> : (
+          <div className="space-y-2">
+            {orcadoRealizado.map((l) => {
+              const estourou = l.orcado > 0 && l.realizado > l.orcado;
+              const pct = l.orcado > 0 ? Math.min((l.realizado / l.orcado) * 100, 100) : 100;
+              return (
+                <div key={l.categoria}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-600">{l.categoria}</span>
+                    <span className={estourou ? 'text-red-500 font-medium' : 'text-slate-500'}>
+                      {formatBRL(l.realizado)}{l.orcado > 0 && ` / ${formatBRL(l.orcado)}`}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${estourou ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* --------------------------------- Investimentos ---------------------------- */
+
+const TIPOS_ATIVO = ['Renda Fixa', 'Ações', 'Fundos Imobiliários', 'Fundos', 'Criptomoedas', 'Poupança', 'Outro'];
+const TIPOS_MOV = [
+  { v: 'aporte', l: 'Aporte' },
+  { v: 'resgate', l: 'Resgate' },
+  { v: 'rendimento', l: 'Rendimento' },
+];
+
+function patrimonioDoAtivo(ativo, movimentacoes) {
+  return movimentacoes
+    .filter((m) => m.ativoId === ativo.id)
+    .reduce((s, m) => {
+      if (m.tipo === 'resgate') return s - m.valor;
+      return s + m.valor;
+    }, ativo.aporteInicial || 0);
+}
+
+function AtivoModal({ open, onClose, onSave, initial }) {
+  const blank = { nome: '', tipo: TIPOS_ATIVO[0], aporteInicial: '', dataInicio: todayStr() };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => {
+    if (open) setForm(initial ? { ...initial, aporteInicial: String(initial.aporteInicial) } : blank);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
+
+  if (!open) return null;
+  const valid = form.nome.trim();
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({ ...form, aporteInicial: Number(form.aporteInicial) || 0 });
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">{initial ? 'Editar ativo' : 'Novo ativo'}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Nome do ativo</label>
+            <input
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              placeholder="Ex: Tesouro Selic, XP Ações, Bitcoin..."
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Tipo</label>
+            <select
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            >
+              {TIPOS_ATIVO.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Aporte inicial (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.aporteInicial}
+                onChange={(e) => setForm({ ...form, aporteInicial: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Data de início</label>
+              <input
+                type="date"
+                value={form.dataInicio}
+                onChange={(e) => setForm({ ...form, dataInicio: e.target.value })}
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MovimentacaoModal({ open, onClose, onSave, ativo }) {
+  const blank = { tipo: 'aporte', valor: '', data: todayStr() };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => { if (open) setForm(blank); }, [open]);
+  if (!open || !ativo) return null;
+  const valid = Number(form.valor) > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({ ativoId: ativo.id, tipo: form.tipo, valor: Number(form.valor), data: form.data });
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">Movimentação · {ativo.nome}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+            {TIPOS_MOV.map((t) => (
+              <button
+                key={t.v}
+                onClick={() => setForm({ ...form, tipo: t.v })}
+                className={`flex-1 px-2 py-2 rounded-lg transition ${form.tipo === t.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              >
+                {t.l}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Valor (R$)</label>
+              <input
+                type="number" min="0" step="0.01" autoFocus
+                value={form.valor}
+                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Data</label>
+              <input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm({ ...form, data: e.target.value })}
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AtivoCard({ ativo, movimentacoes, onEdit, onDelete, onAddMov, onDeleteMov }) {
+  const patrimonio = patrimonioDoAtivo(ativo, movimentacoes);
+  const minhas = movimentacoes.filter((m) => m.ativoId === ativo.id).sort((a, b) => b.data.localeCompare(a.data));
+  const ganho = patrimonio - (ativo.aporteInicial || 0) - minhas.filter((m) => m.tipo === 'aporte').reduce((s, m) => s + m.valor, 0) + minhas.filter((m) => m.tipo === 'resgate').reduce((s, m) => s + m.valor, 0);
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-800">{ativo.nome}</h4>
+          <span className="text-[11px] text-slate-400">{ativo.tipo}</span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => onEdit(ativo)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+            <Icon name="Pencil" size={13} />
+          </button>
+          <button onClick={() => onDelete(ativo)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+            <Icon name="Trash2" size={13} />
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xl font-semibold text-slate-800">{formatBRL(patrimonio)}</div>
+      <div className={`text-xs mt-0.5 ${ganho < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+        {ganho >= 0 ? '+' : ''}{formatBRL(ganho)} em rendimento
+      </div>
+
+      <button
+        onClick={() => onAddMov(ativo)}
+        className="flex items-center justify-center gap-1.5 w-full mt-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-medium px-3 py-2 rounded-xl transition"
+      >
+        <Icon name="Plus" size={13} /> Registrar movimentação
+      </button>
+
+      {minhas.length > 0 && (
+        <details className="mt-3 group">
+          <summary className="text-xs font-medium text-slate-500 cursor-pointer select-none list-none flex items-center gap-1">
+            <Icon name="ChevronDown" size={13} className="transition group-open:rotate-180" /> Histórico ({minhas.length})
+          </summary>
+          <div className="mt-2 space-y-1 max-h-40 overflow-y-auto pf-scroll">
+            {minhas.map((m) => (
+              <div key={m.id} className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-2.5 py-1.5">
+                <span className="text-slate-500">{formatDateBR(m.data)} · {TIPOS_MOV.find((t) => t.v === m.tipo)?.l}</span>
+                <div className="flex items-center gap-2">
+                  <span className={m.tipo === 'resgate' ? 'text-red-500 font-medium' : 'text-emerald-600 font-medium'}>
+                    {m.tipo === 'resgate' ? '-' : '+'}{formatBRL(m.valor)}
+                  </span>
+                  <button onClick={() => onDeleteMov(m)} className="text-slate-300 hover:text-red-500">
+                    <Icon name="X" size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </Card>
+  );
+}
+
+function EmprestimoModal({ open, onClose, onSave, initial }) {
+  const blank = { pessoa: '', descricao: '', valor: '', data: todayStr(), dataPrevista: '', quitado: false };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => {
+    if (open) setForm(initial ? { ...initial, valor: String(initial.valor) } : blank);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
+
+  if (!open) return null;
+  const valid = form.pessoa.trim() && Number(form.valor) > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({ ...form, valor: Number(form.valor) });
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">{initial ? 'Editar valor a receber' : 'Novo valor a receber'}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Quem deve</label>
+            <input
+              value={form.pessoa}
+              onChange={(e) => setForm({ ...form, pessoa: e.target.value })}
+              placeholder="Nome da pessoa"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Descrição</label>
+            <input
+              value={form.descricao}
+              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+              placeholder="Ex: Empréstimo, rateio de viagem..."
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Valor (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.valor}
+                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Data do empréstimo</label>
+              <input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm({ ...form, data: e.target.value })}
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Previsão de devolução (opcional)</label>
+            <input
+              type="date"
+              value={form.dataPrevista}
+              onChange={(e) => setForm({ ...form, dataPrevista: e.target.value })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600 pt-1">
+            <input
+              type="checkbox"
+              checked={form.quitado}
+              onChange={(e) => setForm({ ...form, quitado: e.target.checked })}
+              className="accent-emerald-600 w-4 h-4"
+            />
+            Já foi devolvido
+          </label>
+        </div>
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InvestimentosTab({
+  ativos, movimentacoes, meta, emprestimos, simulacao,
+  onAddAtivo, onEditAtivo, onDeleteAtivo,
+  onAddMov, onDeleteMov,
+  onSaveMeta,
+  onAddEmprestimo, onEditEmprestimo, onDeleteEmprestimo, onToggleEmprestimo,
+  onSaveSimulacao,
+}) {
+  const [ativoModalOpen, setAtivoModalOpen] = useState(false);
+  const [editandoAtivo, setEditandoAtivo] = useState(null);
+  const [movAtivo, setMovAtivo] = useState(null);
+  const [emprestimoModalOpen, setEmprestimoModalOpen] = useState(false);
+  const [editandoEmprestimo, setEditandoEmprestimo] = useState(null);
+  const [periodoView, setPeriodoView] = useState('mes'); // mes | total
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth() + 1);
+  const [ano, setAno] = useState(now.getFullYear());
+  const mk = monthKey(ano, mes);
+
+  const patrimonioTotal = useMemo(
+    () => ativos.reduce((s, a) => s + patrimonioDoAtivo(a, movimentacoes), 0),
+    [ativos, movimentacoes],
+  );
+
+  const movDoPeriodo = useMemo(
+    () => (periodoView === 'total' ? movimentacoes : movimentacoes.filter((m) => m.data.slice(0, 7) === mk)),
+    [movimentacoes, periodoView, mk],
+  );
+  const totalAportes = movDoPeriodo.filter((m) => m.tipo === 'aporte').reduce((s, m) => s + m.valor, 0);
+  const totalResgates = movDoPeriodo.filter((m) => m.tipo === 'resgate').reduce((s, m) => s + m.valor, 0);
+  const totalRendimento = movDoPeriodo.filter((m) => m.tipo === 'rendimento').reduce((s, m) => s + m.valor, 0);
+
+  const ultimosMeses = useMemo(() => {
+    const arr = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(ano, mes - 1 - i, 1);
+      arr.push({ mk: monthKey(d.getFullYear(), d.getMonth() + 1), label: `${MESES[d.getMonth()].slice(0, 3)}/${String(d.getFullYear()).slice(2)}` });
+    }
+    return arr;
+  }, [ano, mes]);
+
+  const dadosPeriodo = useMemo(() => ultimosMeses.map(({ mk: k, label }) => ({
+    mes: label,
+    Aportes: movimentacoes.filter((m) => m.data.slice(0, 7) === k && m.tipo === 'aporte').reduce((s, m) => s + m.valor, 0),
+    Rendimento: movimentacoes.filter((m) => m.data.slice(0, 7) === k && m.tipo === 'rendimento').reduce((s, m) => s + m.valor, 0),
+  })), [ultimosMeses, movimentacoes]);
+
+  // Meta de investimento
+  const [metaForm, setMetaForm] = useState({ valorAlvo: meta?.valorAlvo || '', prazo: meta?.prazo || '' });
+  useEffect(() => { setMetaForm({ valorAlvo: meta?.valorAlvo || '', prazo: meta?.prazo || '' }); }, [meta]);
+  const metaValorAlvo = Number(meta?.valorAlvo) || 0;
+  const metaFalta = Math.max(metaValorAlvo - patrimonioTotal, 0);
+  const metaPct = metaValorAlvo > 0 ? Math.min((patrimonioTotal / metaValorAlvo) * 100, 100) : 0;
+  const metaMeses = meta?.prazo ? monthsUntil(meta.prazo) : null;
+  const metaPorMes = metaMeses && metaMeses > 0 ? metaFalta / metaMeses : null;
+
+  // Simulação
+  const [sim, setSim] = useState(simulacao || { valorInicial: '', aporteMensal: '', taxaCarteira: '', taxaMercado: '', meses: 24 });
+  useEffect(() => { if (simulacao) setSim(simulacao); }, [simulacao]);
+
+  const dadosSimulacao = useMemo(() => {
+    const vi = Number(sim.valorInicial) || patrimonioTotal;
+    const ap = Number(sim.aporteMensal) || 0;
+    const tc = (Number(sim.taxaCarteira) || 0) / 100;
+    const tm = (Number(sim.taxaMercado) || 0) / 100;
+    const n = Math.min(Math.max(Number(sim.meses) || 0, 1), 240);
+    let carteira = vi;
+    let mercado = vi;
+    const arr = [{ mes: 0, Carteira: vi, Mercado: vi }];
+    for (let i = 1; i <= n; i += 1) {
+      carteira = carteira * (1 + tc) + ap;
+      mercado = mercado * (1 + tm) + ap;
+      arr.push({ mes: i, Carteira: Math.round(carteira * 100) / 100, Mercado: Math.round(mercado * 100) / 100 });
+    }
+    return arr;
+  }, [sim, patrimonioTotal]);
+
+  const finalCarteira = dadosSimulacao[dadosSimulacao.length - 1]?.Carteira || 0;
+  const finalMercado = dadosSimulacao[dadosSimulacao.length - 1]?.Mercado || 0;
+  const diffFinal = finalCarteira - finalMercado;
+
+  // Empréstimos
+  const emprestimosPendentes = emprestimos.filter((e) => !e.quitado);
+  const totalPendente = emprestimosPendentes.reduce((s, e) => s + e.valor, 0);
+
+  return (
+    <div className="pb-24 space-y-4">
+      <Card className="p-4">
+        <SectionTitle icon="Landmark" title="Patrimônio investido" subtitle={`${ativos.length} ativo${ativos.length !== 1 ? 's' : ''} cadastrado${ativos.length !== 1 ? 's' : ''}`} />
+        <div className="text-2xl font-semibold text-slate-800 mb-3">{formatBRL(patrimonioTotal)}</div>
+        <button
+          onClick={() => { setEditandoAtivo(null); setAtivoModalOpen(true); }}
+          className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
+        >
+          <Icon name="Plus" size={15} /> Novo ativo
+        </button>
+      </Card>
+
+      {ativos.length === 0 ? (
+        <EmptyState text="Cadastre seu primeiro ativo para começar a acompanhar." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {ativos.map((a) => (
+            <AtivoCard
+              key={a.id}
+              ativo={a}
+              movimentacoes={movimentacoes}
+              onEdit={(at) => { setEditandoAtivo(at); setAtivoModalOpen(true); }}
+              onDelete={onDeleteAtivo}
+              onAddMov={setMovAtivo}
+              onDeleteMov={onDeleteMov}
+            />
+          ))}
+        </div>
+      )}
+
+      <Card className="p-4">
+        <SectionTitle icon="TrendingUp" title="Aportes e rendimento" subtitle="Por período e no total" />
+        <div className="flex items-center justify-between mb-3">
+          {periodoView === 'mes' ? (
+            <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+          ) : <div />}
+          <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+            {[{ v: 'mes', l: 'Mês' }, { v: 'total', l: 'Total geral' }].map((op) => (
+              <button
+                key={op.v}
+                onClick={() => setPeriodoView(op.v)}
+                className={`px-3 py-1.5 rounded-lg transition ${periodoView === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              >
+                {op.l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-emerald-50/60 rounded-xl px-3 py-2">
+            <div className="text-[11px] text-slate-500">Aportes</div>
+            <div className="text-sm font-semibold text-emerald-700">{formatBRL(totalAportes)}</div>
+          </div>
+          <div className="bg-red-50/60 rounded-xl px-3 py-2">
+            <div className="text-[11px] text-slate-500">Resgates</div>
+            <div className="text-sm font-semibold text-red-500">{formatBRL(totalResgates)}</div>
+          </div>
+          <div className="bg-emerald-50/60 rounded-xl px-3 py-2">
+            <div className="text-[11px] text-slate-500">Rendimento</div>
+            <div className="text-sm font-semibold text-emerald-700">{formatBRL(totalRendimento)}</div>
+          </div>
+        </div>
+        <ColumnChart
+          data={dadosPeriodo}
+          seriesKeys={['Aportes', 'Rendimento']}
+          seriesColors={{ Aportes: '#6ee7b7', Rendimento: '#059669' }}
+          height={180}
+        />
+      </Card>
+
+      <Card className="p-4">
+        <SectionTitle icon="Target" title="Meta de investimento" subtitle="Quanto falta para o patrimônio alvo" />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Valor alvo (R$)</label>
+            <input
+              type="number" min="0" step="0.01"
+              value={metaForm.valorAlvo}
+              onChange={(e) => setMetaForm({ ...metaForm, valorAlvo: e.target.value })}
+              onBlur={() => onSaveMeta({ valorAlvo: Number(metaForm.valorAlvo) || 0, prazo: metaForm.prazo })}
+              placeholder="0,00"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Prazo (opcional)</label>
+            <input
+              type="date"
+              value={metaForm.prazo}
+              onChange={(e) => setMetaForm({ ...metaForm, prazo: e.target.value })}
+              onBlur={() => onSaveMeta({ valorAlvo: Number(metaForm.valorAlvo) || 0, prazo: metaForm.prazo })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+        </div>
+        {metaValorAlvo > 0 && (
+          <>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-slate-500">{formatBRL(patrimonioTotal)} de {formatBRL(metaValorAlvo)}</span>
+              <span className="font-medium text-emerald-600">{metaPct.toFixed(0)}%</span>
+            </div>
+            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${metaPct}%` }} />
+            </div>
+            {metaFalta > 0 ? (
+              <div className="text-xs text-amber-600">
+                Faltam {formatBRL(metaFalta)}
+                {metaPorMes != null && <> · ~{formatBRL(metaPorMes)}/mês para chegar no prazo</>}
+              </div>
+            ) : (
+              <div className="text-xs font-medium text-emerald-600">Meta atingida! 🎉</div>
+            )}
+          </>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <SectionTitle icon="Activity" title="Simulação de rendimento" subtitle="Compare sua carteira com uma rentabilidade de mercado" />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Valor inicial (R$)</label>
+            <input
+              type="number" step="0.01"
+              value={sim.valorInicial}
+              onChange={(e) => setSim({ ...sim, valorInicial: e.target.value })}
+              onBlur={() => onSaveSimulacao(sim)}
+              placeholder={String(patrimonioTotal)}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Aporte mensal (R$)</label>
+            <input
+              type="number" step="0.01"
+              value={sim.aporteMensal}
+              onChange={(e) => setSim({ ...sim, aporteMensal: e.target.value })}
+              onBlur={() => onSaveSimulacao(sim)}
+              placeholder="0,00"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">Sua carteira (% a.m.)</label>
+            <input
+              type="number" step="0.01"
+              value={sim.taxaCarteira}
+              onChange={(e) => setSim({ ...sim, taxaCarteira: e.target.value })}
+              onBlur={() => onSaveSimulacao(sim)}
+              placeholder="0,80"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">Mercado/benchmark (% a.m.)</label>
+            <input
+              type="number" step="0.01"
+              value={sim.taxaMercado}
+              onChange={(e) => setSim({ ...sim, taxaMercado: e.target.value })}
+              onBlur={() => onSaveSimulacao(sim)}
+              placeholder="Ex: CDI ≈ 0,90"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-medium text-slate-500">Período (meses)</label>
+            <input
+              type="number" min="1" max="240"
+              value={sim.meses}
+              onChange={(e) => setSim({ ...sim, meses: e.target.value })}
+              onBlur={() => onSaveSimulacao(sim)}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+        </div>
+
+        <LineChartSimple
+          data={dadosSimulacao}
+          seriesKeys={['Carteira', 'Mercado']}
+          seriesColors={{ Carteira: '#059669', Mercado: '#94a3b8' }}
+          seriesDash={{ Mercado: '5 4' }}
+          height={200}
+        />
+        <div className={`text-xs mt-2 font-medium ${diffFinal >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          {diffFinal >= 0
+            ? `Sua carteira projeta ${formatBRL(diffFinal)} a mais que o mercado no período.`
+            : `Sua carteira projeta ${formatBRL(Math.abs(diffFinal))} a menos que o mercado no período.`}
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="p-4 flex items-center justify-between">
+          <SectionTitle icon="Users" title="Valores pendentes a receber" subtitle={`${emprestimosPendentes.length} em aberto · ${formatBRL(totalPendente)}`} right={null} />
+          <button
+            onClick={() => { setEditandoEmprestimo(null); setEmprestimoModalOpen(true); }}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition shrink-0"
+          >
+            <Icon name="Plus" size={14} /> Novo
+          </button>
+        </div>
+        {emprestimos.length === 0 ? (
+          <EmptyState text="Nenhum valor emprestado registrado." />
+        ) : (
+          <div className="overflow-x-auto pf-scroll">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
+                  <th className="px-4 py-2 font-medium">Recebido</th>
+                  <th className="px-2 py-2 font-medium">Quem deve</th>
+                  <th className="px-2 py-2 font-medium hidden sm:table-cell">Descrição</th>
+                  <th className="px-2 py-2 font-medium text-right">Valor</th>
+                  <th className="px-2 py-2 font-medium">Status</th>
+                  <th className="px-2 py-2 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...emprestimos].sort((a, b) => a.data.localeCompare(b.data)).map((e) => {
+                  const status = e.quitado ? 'Recebido' : (e.dataPrevista && e.dataPrevista < todayStr() ? 'Em atraso' : 'A receber');
+                  return (
+                    <tr key={e.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => onToggleEmprestimo(e)}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${e.quitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
+                        >
+                          <Icon name="Check" size={14} />
+                        </button>
+                      </td>
+                      <td className="px-2 py-2.5 text-slate-700">{e.pessoa}</td>
+                      <td className="px-2 py-2.5 hidden sm:table-cell text-slate-500 max-w-[160px] truncate">{e.descricao}</td>
+                      <td className="px-2 py-2.5 text-right font-medium text-emerald-600 whitespace-nowrap">{formatBRL(e.valor)}</td>
+                      <td className="px-2 py-2.5"><Badge status={status} /></td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => { setEditandoEmprestimo(e); setEmprestimoModalOpen(true); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                            <Icon name="Pencil" size={13} />
+                          </button>
+                          <button onClick={() => onDeleteEmprestimo(e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+                            <Icon name="Trash2" size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <AtivoModal
+        open={ativoModalOpen}
+        onClose={() => setAtivoModalOpen(false)}
+        initial={editandoAtivo}
+        onSave={(data) => {
+          if (editandoAtivo) onEditAtivo({ ...editandoAtivo, ...data });
+          else onAddAtivo({ ...data, id: uid() });
+          setAtivoModalOpen(false);
+        }}
+      />
+      <MovimentacaoModal
+        open={!!movAtivo}
+        ativo={movAtivo}
+        onClose={() => setMovAtivo(null)}
+        onSave={(data) => { onAddMov({ ...data, id: uid() }); setMovAtivo(null); }}
+      />
+      <EmprestimoModal
+        open={emprestimoModalOpen}
+        initial={editandoEmprestimo}
+        onClose={() => setEmprestimoModalOpen(false)}
+        onSave={(data) => {
+          if (editandoEmprestimo) onEditEmprestimo({ ...editandoEmprestimo, ...data });
+          else onAddEmprestimo({ ...data, id: uid() });
+          setEmprestimoModalOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+/* --------------------------------- App raiz -------------------------------- */
+
+const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  { id: 'receber', label: 'A Receber', icon: 'ArrowDownCircle' },
+  { id: 'pagar', label: 'A Pagar', icon: 'ArrowUpCircle' },
+  { id: 'cartao', label: 'Cartão', icon: 'CreditCard' },
+  { id: 'investimentos', label: 'Investimentos', icon: 'TrendingUp' },
+  { id: 'metas', label: 'Sonhos & Metas', icon: 'Sparkles' },
+];
+
+function App() {
+  const [tab, setTab] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
+  const [lancamentos, setLancamentos] = useState([]);
+  const [orcamentos, setOrcamentos] = useState({});
+  const [config, setConfig] = useState({ saldoInicial: {} });
+  const [metas, setMetas] = useState([]);
+  const [cartaoTransacoes, setCartaoTransacoes] = useState([]);
+  const [investAtivos, setInvestAtivos] = useState([]);
+  const [investMovimentacoes, setInvestMovimentacoes] = useState([]);
+  const [investMeta, setInvestMeta] = useState({ valorAlvo: 0, prazo: '' });
+  const [investEmprestimos, setInvestEmprestimos] = useState([]);
+  const [investSimulacao, setInvestSimulacao] = useState({ valorInicial: '', aporteMensal: '', taxaCarteira: '', taxaMercado: '', meses: 24 });
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [savingState, setSavingState] = useState('idle'); // idle | saving | saved | error
+  const [ultimaSincronia, setUltimaSincronia] = useState(null);
+  const [pendentes, setPendentes] = useState([]); // alterações que falharam ao salvar, aguardando nova tentativa
+
+  const carregarDados = useCallback(async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
+    try {
+      const dados = await sbGetAll();
+      if (dados.lancamentos) setLancamentos(dados.lancamentos);
+      if (dados.orcamentos) setOrcamentos(dados.orcamentos);
+      if (dados.config) setConfig(dados.config);
+      if (dados.metas) setMetas(dados.metas);
+      if (dados.cartaoTransacoes) setCartaoTransacoes(dados.cartaoTransacoes);
+      if (dados.investAtivos) setInvestAtivos(dados.investAtivos);
+      if (dados.investMovimentacoes) setInvestMovimentacoes(dados.investMovimentacoes);
+      if (dados.investMeta) setInvestMeta(dados.investMeta);
+      if (dados.investEmprestimos) setInvestEmprestimos(dados.investEmprestimos);
+      if (dados.investSimulacao) setInvestSimulacao(dados.investSimulacao);
+      setUltimaSincronia(new Date());
+      if (silencioso) setErrorMsg(null);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Falha ao carregar dados do Supabase:', e);
+      if (!silencioso) {
+        const motivo = e?.message ? ` (${e.message})` : '';
+        setErrorMsg(`Não foi possível carregar os dados salvos${motivo}. Verifique sua conexão e tente recarregar a página.`);
+      }
+    } finally {
+      if (!silencioso) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarDados(false);
+  }, [carregarDados]);
+
+  // Atualização automática: busca dados novos a cada 20s, para refletir o que a outra
+  // pessoa salvou em outro dispositivo, sem precisar recarregar a página manualmente.
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === 'visible' && pendentes.length === 0) carregarDados(true);
+    }, 20000);
+    const aoFocar = () => { if (pendentes.length === 0) carregarDados(true); };
+    window.addEventListener('focus', aoFocar);
+    document.addEventListener('visibilitychange', aoFocar);
+    return () => {
+      clearInterval(intervalo);
+      window.removeEventListener('focus', aoFocar);
+      document.removeEventListener('visibilitychange', aoFocar);
+    };
+  }, [carregarDados, pendentes.length]);
+
+  const flashSaved = () => {
+    setSavingState('saved');
+    setTimeout(() => setSavingState((s) => (s === 'saved' ? 'idle' : s)), 1500);
+  };
+
+  const persist = useCallback(async (key, value, setter, tentativa = 0) => {
+    setter(value);
+    setSavingState('saving');
+    try {
+      await sbSet(key, value);
+      flashSaved();
+      setPendentes((prev) => prev.filter((p) => p.key !== key));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`Falha ao salvar "${key}" (tentativa ${tentativa + 1}/3):`, e);
+      if (tentativa < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (tentativa + 1)));
+        return persist(key, value, setter, tentativa + 1);
+      }
+      setSavingState('error');
+      const motivo = e?.message ? ` (${e.message})` : '';
+      setErrorMsg(`Não consegui salvar sua última alteração${motivo}. Ela continua aparecendo aqui, mas só neste dispositivo até você tentar salvar de novo — toque em "Tentar novamente" abaixo.`);
+      setPendentes((prev) => [...prev.filter((p) => p.key !== key), { key, value, setter }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (pendentes.length === 0) {
+      setErrorMsg((m) => (m && m.startsWith('Não consegui salvar') ? null : m));
+      if (savingState === 'error') setSavingState('idle');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendentes.length]);
+
+  const retentarPendentes = () => {
+    const lista = [...pendentes];
+    lista.forEach((p) => persist(p.key, p.value, p.setter));
+  };
+
+  const addLancamentos = (novos) => persist('lancamentos', [...lancamentos, ...novos], setLancamentos);
+  const editLancamento = (editado) => persist('lancamentos', lancamentos.map((t) => (t.id === editado.id ? editado : t)), setLancamentos);
+  const toggleQuitado = (t) => persist('lancamentos', lancamentos.map((x) => (x.id === t.id ? { ...x, quitado: !x.quitado } : x)), setLancamentos);
+  const duplicar = (t) => persist('lancamentos', [...lancamentos, { ...t, id: uid(), data: todayStr(), quitado: false }], setLancamentos);
+  const excluir = (t) => {
+    if (window.confirm && !window.confirm(`Excluir o lançamento "${t.descricao}"?`)) return;
+    persist('lancamentos', lancamentos.filter((x) => x.id !== t.id), setLancamentos);
+  };
+
+  const setOrcamento = (categoria, mk, valor) => {
+    const next = { ...orcamentos, [categoria]: { ...(orcamentos[categoria] || {}), [mk]: valor } };
+    persist('orcamentos', next, setOrcamentos);
+  };
+
+  const setSaldoInicial = (mk, valor) => {
+    const next = { ...config, saldoInicial: { ...(config.saldoInicial || {}), [mk]: valor } };
+    persist('config', next, setConfig);
+  };
+
+  const addMeta = (meta) => persist('metas', [...metas, meta], setMetas);
+  const editMeta = (editada) => persist('metas', metas.map((m) => (m.id === editada.id ? editada : m)), setMetas);
+  const deleteMeta = (meta) => persist('metas', metas.filter((m) => m.id !== meta.id), setMetas);
+  const aportarMeta = (editada) => persist('metas', metas.map((m) => (m.id === editada.id ? editada : m)), setMetas);
+
+  const importarCartao = (novas) => persist('cartaoTransacoes', [...cartaoTransacoes, ...novas], setCartaoTransacoes);
+  const editarCategoriaCartao = (editada) => persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
+  const excluirCartao = (t) => persist('cartaoTransacoes', cartaoTransacoes.filter((x) => x.id !== t.id), setCartaoTransacoes);
+
+  const addAtivo = (ativo) => persist('investAtivos', [...investAtivos, ativo], setInvestAtivos);
+  const editAtivo = (editado) => persist('investAtivos', investAtivos.map((a) => (a.id === editado.id ? editado : a)), setInvestAtivos);
+  const deleteAtivo = (ativo) => {
+    if (window.confirm && !window.confirm(`Excluir o ativo "${ativo.nome}" e todo o seu histórico?`)) return;
+    persist('investAtivos', investAtivos.filter((a) => a.id !== ativo.id), setInvestAtivos);
+    persist('investMovimentacoes', investMovimentacoes.filter((m) => m.ativoId !== ativo.id), setInvestMovimentacoes);
+  };
+  const addMov = (mov) => persist('investMovimentacoes', [...investMovimentacoes, mov], setInvestMovimentacoes);
+  const deleteMov = (mov) => persist('investMovimentacoes', investMovimentacoes.filter((m) => m.id !== mov.id), setInvestMovimentacoes);
+  const saveInvestMeta = (novaMeta) => persist('investMeta', novaMeta, setInvestMeta);
+  const saveInvestSimulacao = (novaSim) => persist('investSimulacao', novaSim, setInvestSimulacao);
+  const addEmprestimo = (e) => persist('investEmprestimos', [...investEmprestimos, e], setInvestEmprestimos);
+  const editEmprestimo = (editado) => persist('investEmprestimos', investEmprestimos.map((x) => (x.id === editado.id ? editado : x)), setInvestEmprestimos);
+  const deleteEmprestimo = (e) => persist('investEmprestimos', investEmprestimos.filter((x) => x.id !== e.id), setInvestEmprestimos);
+  const toggleEmprestimo = (e) => persist('investEmprestimos', investEmprestimos.map((x) => (x.id === e.id ? { ...x, quitado: !x.quitado } : x)), setInvestEmprestimos);
+
+  return (
+    <div className="pf-root min-h-screen bg-gradient-to-b from-emerald-50/40 to-white">
+      <GlobalStyle />
+
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-emerald-100">
+        <div className="max-w-4xl mx-auto px-4 pt-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+                <Icon name="Wallet" size={18} />
+              </div>
+              <h1 className="text-[15px] font-semibold text-slate-800">Finanças da Casa</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1 min-w-[70px] justify-end">
+                {savingState === 'saving' && <><Icon name="Loader2" size={12} className="animate-spin" /> salvando…</>}
+                {savingState === 'saved' && <><Icon name="Cloud" size={12} className="text-emerald-500" /> salvo</>}
+                {savingState === 'error' && <><Icon name="CloudOff" size={12} className="text-red-500" /> erro ao salvar</>}
+                {savingState === 'idle' && ultimaSincronia && (
+                  <span title={ultimaSincronia.toLocaleString('pt-BR')}>
+                    atualizado {ultimaSincronia.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => carregarDados(true)}
+                title="Buscar atualizações agora"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 transition"
+              >
+                <Icon name="RefreshCw" size={15} />
+              </button>
+            </div>
+          </div>
+
+          <nav className="flex gap-1 mt-3 overflow-x-auto pf-scroll -mx-4 px-4">
+            {TABS.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition ${active ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Icon name={t.icon} size={14} /> {t.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 pt-4">
+        {errorMsg && (
+          <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-100 text-red-600 text-xs rounded-xl px-3 py-2.5">
+            <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{errorMsg}</span>
+            {pendentes.length > 0 && (
+              <button
+                onClick={retentarPendentes}
+                className="flex items-center gap-1 shrink-0 bg-red-100 hover:bg-red-200 text-red-700 font-medium px-2 py-1 rounded-lg"
+              >
+                <Icon name="RefreshCw" size={12} /> Tentar novamente
+              </button>
+            )}
+            <button onClick={() => setErrorMsg(null)} className="shrink-0 text-red-400 hover:text-red-600"><Icon name="X" size={13} /></button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-24 text-emerald-500">
+            <Icon name="Loader2" size={22} className="animate-spin" />
+          </div>
+        ) : (
+          <>
+            {tab === 'dashboard' && (
+              <DashboardTab
+                lancamentos={lancamentos}
+                orcamentos={orcamentos}
+                onSetOrcamento={setOrcamento}
+                config={config}
+                onSetSaldoInicial={setSaldoInicial}
+              />
+            )}
+            {tab === 'receber' && (
+              <ContasTable
+                tipo="receber"
+                categorias={CATEGORIAS_RECEBER}
+                lancamentos={lancamentos}
+                onAdd={addLancamentos}
+                onEdit={editLancamento}
+                onToggleQuitado={toggleQuitado}
+                onDuplicate={duplicar}
+                onDelete={excluir}
+              />
+            )}
+            {tab === 'pagar' && (
+              <ContasTable
+                tipo="pagar"
+                categorias={CATEGORIAS_PAGAR}
+                lancamentos={lancamentos}
+                onAdd={addLancamentos}
+                onEdit={editLancamento}
+                onToggleQuitado={toggleQuitado}
+                onDuplicate={duplicar}
+                onDelete={excluir}
+              />
+            )}
+            {tab === 'cartao' && (
+              <CartaoTab
+                transacoes={cartaoTransacoes}
+                orcamentos={orcamentos}
+                onImport={importarCartao}
+                onEditCategoria={editarCategoriaCartao}
+                onDelete={excluirCartao}
+              />
+            )}
+            {tab === 'investimentos' && (
+              <InvestimentosTab
+                ativos={investAtivos}
+                movimentacoes={investMovimentacoes}
+                meta={investMeta}
+                emprestimos={investEmprestimos}
+                simulacao={investSimulacao}
+                onAddAtivo={addAtivo}
+                onEditAtivo={editAtivo}
+                onDeleteAtivo={deleteAtivo}
+                onAddMov={addMov}
+                onDeleteMov={deleteMov}
+                onSaveMeta={saveInvestMeta}
+                onAddEmprestimo={addEmprestimo}
+                onEditEmprestimo={editEmprestimo}
+                onDeleteEmprestimo={deleteEmprestimo}
+                onToggleEmprestimo={toggleEmprestimo}
+                onSaveSimulacao={saveInvestSimulacao}
+              />
+            )}
+            {tab === 'metas' && (
+              <MetasTab
+                metas={metas}
+                onAdd={addMeta}
+                onEdit={editMeta}
+                onDelete={deleteMeta}
+                onAportar={aportarMeta}
+              />
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+const raizApp = ReactDOM.createRoot(document.getElementById('root'));
+raizApp.render(<App />);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
