@@ -345,7 +345,8 @@ function DreSecao({ titulo, categorias, tipo, dados, passaFiltro, cor }) {
       categoria: c,
       valor: dados.filter((t) => t.tipo === tipo && t.categoria === c && passaFiltro(t)).reduce((s, t) => s + t.valor, 0),
     }))
-    .filter((l) => l.valor > 0);
+    .filter((l) => l.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
   const total = linhas.reduce((s, l) => s + l.valor, 0);
   return (
     <div>
@@ -405,6 +406,7 @@ function getStatus(t) {
 function statusClasses(status) {
   if (status === 'Pago' || status === 'Recebido') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if (status === 'Em atraso') return 'bg-red-50 text-red-600 border-red-200';
+  if (status === 'Parcial') return 'bg-blue-50 text-blue-700 border-blue-200';
   return 'bg-amber-50 text-amber-700 border-amber-200';
 }
 
@@ -434,15 +436,20 @@ function parseValorLivre(raw) {
   return Number.isNaN(n) ? 0 : n;
 }
 
-function parseDataLivre(raw) {
+function parseDataLivre(raw, formato = 'BR') {
   if (!raw) return '';
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return `${raw.getFullYear()}-${pad2(raw.getMonth() + 1)}-${pad2(raw.getDate())}`;
+  }
   const s = String(raw).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
   if (m) {
-    let [, d, mo, y] = m;
+    let [, p1, p2, y] = m;
     if (y.length === 2) y = `20${y}`;
-    return `${y}-${pad2(mo)}-${pad2(d)}`;
+    const dia = formato === 'US' ? p2 : p1;
+    const mes = formato === 'US' ? p1 : p2;
+    return `${y}-${pad2(mes)}-${pad2(dia)}`;
   }
   return '';
 }
@@ -473,13 +480,13 @@ async function lerArquivoExtrato(file) {
   let wb;
   if (ext === 'csv') {
     const text = await file.text();
-    wb = XLSX.read(text, { type: 'string' });
+    wb = XLSX.read(text, { type: 'string', cellDates: true });
   } else {
     const buf = await file.arrayBuffer();
-    wb = XLSX.read(buf, { type: 'array' });
+    wb = XLSX.read(buf, { type: 'array', cellDates: true });
   }
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd', defval: '' });
 }
 
 /* ------------------------------ Fonte ----------------------------------- */
@@ -766,6 +773,9 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ano, setAno] = useState(now.getFullYear());
+  const [modoFiltro, setModoFiltro] = useState('mes'); // mes | periodo
+  const [dataInicio, setDataInicio] = useState(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`);
+  const [dataFim, setDataFim] = useState(todayStr());
   const [categoriasSel, setCategoriasSel] = useState([]);
   const [statusFiltro, setStatusFiltro] = useState('todos'); // todos | quitado | pendente
   const [busca, setBusca] = useState('');
@@ -779,10 +789,14 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
     [lancamentos, tipo],
   );
 
-  const doMes = useMemo(
-    () => doTipo.filter((t) => t.data.slice(0, 7) === mk),
-    [doTipo, mk],
-  );
+  const doMes = useMemo(() => {
+    if (modoFiltro === 'periodo') {
+      const ini = dataInicio || '0000-01-01';
+      const fim = dataFim || '9999-12-31';
+      return doTipo.filter((t) => t.data >= ini && t.data <= fim);
+    }
+    return doTipo.filter((t) => t.data.slice(0, 7) === mk);
+  }, [doTipo, mk, modoFiltro, dataInicio, dataFim]);
 
   const filtrados = useMemo(() => {
     let list = doMes;
@@ -796,12 +810,32 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
     return [...list].sort((a, b) => a.data.localeCompare(b.data));
   }, [doMes, categoriasSel, statusFiltro, busca]);
 
+  const resumoFiltro = useMemo(() => {
+    const map = {};
+    filtrados.forEach((t) => {
+      if (!map[t.categoria]) map[t.categoria] = { quitado: 0, pendente: 0 };
+      if (t.quitado) map[t.categoria].quitado += t.valor;
+      else map[t.categoria].pendente += t.valor;
+    });
+    return Object.entries(map)
+      .map(([categoria, v]) => ({ categoria, ...v, total: v.quitado + v.pendente }))
+      .sort((a, b) => b.total - a.total);
+  }, [filtrados]);
+
   const previsaoPorCategoria = useMemo(() => {
     const map = {};
     categorias.forEach((c) => { map[c] = 0; });
     doMes.forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
     return map;
   }, [doMes, categorias]);
+
+  const previsaoOrdenada = useMemo(
+    () => categorias
+      .map((c) => ({ categoria: c, valor: previsaoPorCategoria[c] || 0 }))
+      .filter((l) => l.valor > 0)
+      .sort((a, b) => b.valor - a.valor),
+    [categorias, previsaoPorCategoria],
+  );
 
   const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
 
@@ -830,8 +864,37 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
 
   return (
     <div className="pb-24">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+          {[{ v: 'mes', l: 'Mês' }, { v: 'periodo', l: 'Período' }].map((op) => (
+            <button
+              key={op.v}
+              onClick={() => setModoFiltro(op.v)}
+              className={`px-3 py-1.5 rounded-lg transition ${modoFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+            >
+              {op.l}
+            </button>
+          ))}
+        </div>
+        {modoFiltro === 'mes' ? (
+          <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
+        ) : (
+          <div className="flex items-center gap-1.5 text-sm">
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+            <span className="text-slate-400 text-xs">até</span>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+        )}
         <CategoryMultiSelect categorias={categorias} selected={categoriasSel} onChange={setCategoriasSel} />
       </div>
 
@@ -865,17 +928,15 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
       <Card className="p-4 mb-4">
         <SectionTitle
           icon={tipo === 'pagar' ? 'ArrowUpCircle' : 'ArrowDownCircle'}
-          title={tipo === 'pagar' ? 'Previsão de despesas do mês' : 'Previsão de receita do mês'}
-          subtitle={`${MESES[mes - 1]} ${ano}`}
+          title={tipo === 'pagar' ? 'Previsão de despesas' : 'Previsão de receita'}
+          subtitle={modoFiltro === 'periodo' ? `${formatDateBR(dataInicio)} a ${formatDateBR(dataFim)}` : `${MESES[mes - 1]} ${ano}`}
         />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {categorias.map((c) => (
-            previsaoPorCategoria[c] > 0 && (
-              <div key={c} className="bg-emerald-50/60 rounded-xl px-3 py-2">
-                <div className="text-[11px] text-slate-500 truncate">{c}</div>
-                <div className="text-sm font-semibold text-slate-700">{formatBRL(previsaoPorCategoria[c])}</div>
-              </div>
-            )
+          {previsaoOrdenada.map((l) => (
+            <div key={l.categoria} className="bg-emerald-50/60 rounded-xl px-3 py-2">
+              <div className="text-[11px] text-slate-500 truncate">{l.categoria}</div>
+              <div className="text-sm font-semibold text-slate-700">{formatBRL(l.valor)}</div>
+            </div>
           ))}
         </div>
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-emerald-100">
@@ -883,6 +944,27 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
           <span className={`text-lg font-semibold ${corValor}`}>{formatBRL(totalMes)}</span>
         </div>
       </Card>
+
+      {resumoFiltro.length > 0 && (
+        <Card className="p-4 mb-4">
+          <SectionTitle title="Subtotal do filtro" subtitle={`${filtrados.length} lançamento(s) · do maior para o menor`} />
+          <div className="space-y-2">
+            {resumoFiltro.map((r) => (
+              <div key={r.categoria} className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-3 py-2 gap-2">
+                <span className="text-slate-600 font-medium truncate">{r.categoria}</span>
+                <div className="flex gap-3 shrink-0">
+                  <span className="text-emerald-600">{tipo === 'pagar' ? 'Pago' : 'Recebido'}: {formatBRL(r.quitado)}</span>
+                  <span className="text-amber-600">{tipo === 'pagar' ? 'A pagar' : 'A receber'}: {formatBRL(r.pendente)}</span>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-sm font-semibold pt-2 mt-1 border-t border-slate-100">
+              <span className="text-slate-700">Total do filtro</span>
+              <span className={corValor}>{formatBRL(resumoFiltro.reduce((s, r) => s + r.total, 0))}</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="p-4 pb-0 flex items-center justify-between">
@@ -1036,7 +1118,8 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
       const realizado = realizadoPorCategoria[`${tipo}:${categoria}`] || 0;
       return { categoria, tipo, orcado, realizado };
     })
-    .filter((l) => l.orcado > 0 || l.realizado > 0);
+    .filter((l) => l.orcado > 0 || l.realizado > 0)
+    .sort((a, b) => Math.max(b.orcado, b.realizado) - Math.max(a.orcado, a.realizado));
 
   // Fluxo de caixa diário
   const diasNoMes = new Date(ano, mes, 0).getDate();
@@ -1535,7 +1618,7 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
         <EmptyState text="Cadastre o primeiro sonho ou meta da família." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {metas.map((m) => (
+          {[...metas].sort((a, b) => b.valorAlvo - a.valorAlvo).map((m) => (
             <MetaCard key={m.id} meta={m} onEdit={openEdit} onDelete={handleDelete} onAportar={setAportando} />
           ))}
         </div>
@@ -1549,12 +1632,13 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
 
 /* --------------------------------- Cartão de Crédito ------------------------ */
 
-function ImportarExtrato({ onConfirm }) {
+function ImportarExtrato({ onConfirm, pendentes }) {
   const [rows, setRows] = useState(null); // array de arrays cru
   const [headerRow, setHeaderRow] = useState(1);
   const [colData, setColData] = useState(-1);
   const [colDesc, setColDesc] = useState(-1);
   const [colValor, setColValor] = useState(-1);
+  const [formatoData, setFormatoData] = useState('BR'); // BR: dd/mm/aaaa | US: mm/dd/aaaa
   const [linhas, setLinhas] = useState([]); // preview editável
   const [erro, setErro] = useState(null);
   const [carregando, setCarregando] = useState(false);
@@ -1589,25 +1673,36 @@ function ImportarExtrato({ onConfirm }) {
 
   useEffect(() => {
     if (!rows || colData < 0 || colDesc < 0 || colValor < 0) { setLinhas([]); return; }
+    const usados = new Set();
     const novas = dataRows
       .filter((r) => r && r.some((c) => String(c).trim() !== ''))
       .map((r) => {
-        const data = parseDataLivre(r[colData]);
+        const data = parseDataLivre(r[colData], formatoData);
         const descricao = String(r[colDesc] || '').trim();
         const valor = parseValorLivre(r[colValor]);
+        const valorAbs = Math.abs(valor);
+        const mesRow = data ? data.slice(0, 7) : '';
+        const match = (pendentes || []).find((p) => (
+          !usados.has(p.id)
+          && Math.abs(p.valor - valorAbs) < 0.01
+          && (!mesRow || p.data.slice(0, 7) === mesRow)
+        ));
+        if (match) usados.add(match.id);
         return {
           id: uid(),
           data,
           descricao,
-          valorAbs: Math.abs(valor),
+          valorAbs,
           valorOriginal: valor,
-          categoria: sugerirCategoria(descricao),
+          categoria: match ? match.categoria : sugerirCategoria(descricao),
           incluir: valor !== 0 && !!data && !!descricao,
+          correspondeId: match ? match.id : null,
+          descricaoOriginalLancada: match ? match.descricao : null,
         };
       });
     setLinhas(novas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, headerRow, colData, colDesc, colValor]);
+  }, [rows, headerRow, colData, colDesc, colValor, formatoData, pendentes]);
 
   const reset = () => {
     setRows(null); setLinhas([]); setErro(null);
@@ -1616,13 +1711,18 @@ function ImportarExtrato({ onConfirm }) {
 
   const totalSelecionado = linhas.filter((l) => l.incluir).reduce((s, l) => s + l.valorAbs, 0);
   const qtdSelecionada = linhas.filter((l) => l.incluir).length;
+  const qtdCorrespondentes = linhas.filter((l) => l.incluir && l.correspondeId).length;
 
   const confirmar = () => {
     const selecionadas = linhas.filter((l) => l.incluir && l.data && l.valorAbs > 0);
     if (selecionadas.length === 0) return;
-    onConfirm(selecionadas.map((l) => ({
-      id: uid(), data: l.data, descricao: l.descricao, valor: l.valorAbs, categoria: l.categoria,
-    })));
+    const novos = selecionadas
+      .filter((l) => !l.correspondeId)
+      .map((l) => ({ id: uid(), data: l.data, descricao: l.descricao, valor: l.valorAbs, categoria: l.categoria, confirmado: true }));
+    const atualizacoes = selecionadas
+      .filter((l) => l.correspondeId)
+      .map((l) => ({ id: l.correspondeId, patch: { data: l.data, descricao: l.descricao, categoria: l.categoria, confirmado: true } }));
+    onConfirm(novos, atualizacoes);
     reset();
   };
 
@@ -1690,6 +1790,13 @@ function ImportarExtrato({ onConfirm }) {
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
               </select>
             </div>
+            <div>
+              <label className="text-[11px] font-medium text-slate-500">Formato da data</label>
+              <select value={formatoData} onChange={(e) => setFormatoData(e.target.value)} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white">
+                <option value="BR">dd/mm/aaaa (Brasil)</option>
+                <option value="US">mm/dd/aaaa (EUA)</option>
+              </select>
+            </div>
             <button onClick={reset} className="text-xs text-slate-400 hover:text-red-500 ml-auto">Cancelar</button>
           </div>
 
@@ -1702,6 +1809,7 @@ function ImportarExtrato({ onConfirm }) {
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-700 text-xs rounded-xl px-3 py-2.5 mb-3">
                 <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
                 Confira e ajuste a categoria de cada linha antes de confirmar — a sugestão é automática e pode errar.
+                {qtdCorrespondentes > 0 && <> {qtdCorrespondentes} linha{qtdCorrespondentes !== 1 ? 's' : ''} já bate{qtdCorrespondentes === 1 ? '' : 'm'} com o que você já tinha lançado.</>}
               </div>
               <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
                 <table className="w-full text-xs">
@@ -1716,7 +1824,7 @@ function ImportarExtrato({ onConfirm }) {
                   </thead>
                   <tbody>
                     {linhas.map((l, i) => (
-                      <tr key={l.id} className={`border-b border-slate-50 ${!l.incluir ? 'opacity-40' : ''}`}>
+                      <tr key={l.id} className={`border-b border-slate-50 ${!l.incluir ? 'opacity-40' : ''} ${l.correspondeId ? 'bg-emerald-50/40' : ''}`}>
                         <td className="px-3 py-1.5">
                           <input
                             type="checkbox"
@@ -1726,7 +1834,14 @@ function ImportarExtrato({ onConfirm }) {
                           />
                         </td>
                         <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">{l.data ? formatDateBR(l.data) : <span className="text-red-400">inválida</span>}</td>
-                        <td className="px-2 py-1.5 text-slate-700 max-w-[180px] truncate">{l.descricao}</td>
+                        <td className="px-2 py-1.5 text-slate-700 max-w-[180px]">
+                          <div className="truncate">{l.descricao}</div>
+                          {l.correspondeId && (
+                            <div className="text-[10px] text-emerald-600 flex items-center gap-1 mt-0.5">
+                              <Icon name="Check" size={10} /> já lançado — só confirmar
+                            </div>
+                          )}
+                        </td>
                         <td className={`px-2 py-1.5 text-right font-medium whitespace-nowrap ${l.valorOriginal < 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                           {formatBRL(l.valorAbs)}{l.valorOriginal < 0 && ' (crédito)'}
                         </td>
@@ -1763,7 +1878,87 @@ function ImportarExtrato({ onConfirm }) {
   );
 }
 
-function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete }) {
+function LancamentoCartaoModal({ open, onClose, onSave }) {
+  const blank = { descricao: '', categoria: CATEGORIAS_PAGAR[0], valor: '', data: todayStr() };
+  const [form, setForm] = useState(blank);
+
+  useEffect(() => { if (open) setForm(blank); }, [open]);
+  if (!open) return null;
+  const valid = form.descricao.trim() && Number(form.valor) > 0;
+
+  const submit = () => {
+    if (!valid) return;
+    onSave({ ...form, valor: Number(form.valor) });
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">Lançar compra do cartão</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">
+          Registre a compra agora, categorizada. Quando o extrato chegar, o sistema tenta casar pelo valor e mês, e você só confirma.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500">Descrição</label>
+            <input
+              value={form.descricao}
+              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+              placeholder="Ex: Supermercado, Uber..."
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Categoria</label>
+            <select
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            >
+              {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">Valor (R$)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={form.valor}
+                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Data</label>
+              <input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm({ ...form, data: e.target.value })}
+                className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onEditCategoria, onDelete, onClearAll }) {
+  const [modalManualOpen, setModalManualOpen] = useState(false);
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [ano, setAno] = useState(now.getFullYear());
@@ -1803,12 +1998,25 @@ function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete
     doMes.forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
     return CATEGORIAS_PAGAR
       .map((c) => ({ categoria: c, realizado: map[c] || 0, orcado: orcamentos?.[c]?.[mk] ?? 0 }))
-      .filter((l) => l.realizado > 0 || l.orcado > 0);
+      .filter((l) => l.realizado > 0 || l.orcado > 0)
+      .sort((a, b) => Math.max(b.orcado, b.realizado) - Math.max(a.orcado, a.realizado));
   }, [doMes, orcamentos, mk]);
 
   return (
     <div className="pb-24 space-y-4">
-      <ImportarExtrato onConfirm={onImport} />
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <SectionTitle icon="Pencil" title="Lançar compra do cartão" subtitle="Categorize agora, confirme quando o extrato chegar" right={null} />
+        </div>
+        <button
+          onClick={() => setModalManualOpen(true)}
+          className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
+        >
+          <Icon name="Plus" size={15} /> Lançar compra agora
+        </button>
+      </Card>
+
+      <ImportarExtrato onConfirm={onImport} pendentes={transacoes.filter((t) => t.confirmado === false)} />
 
       <div className="flex items-center justify-between">
         <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
@@ -1816,7 +2024,21 @@ function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete
       </div>
 
       <Card className="overflow-hidden">
-        <div className="p-4 pb-0"><h3 className="text-sm font-semibold text-slate-700">Lançamentos da fatura</h3></div>
+        <div className="p-4 pb-0 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-700">Lançamentos da fatura</h3>
+          {transacoes.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm && window.confirm('Isso vai apagar TODOS os lançamentos de cartão já importados (de todos os meses). Os lançamentos de Contas a Pagar não são afetados. Continuar?')) {
+                  onClearAll();
+                }
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition shrink-0"
+            >
+              <Icon name="Trash2" size={13} /> Limpar tudo
+            </button>
+          )}
+        </div>
         {doMes.length === 0 ? (
           <EmptyState text="Nenhum lançamento do cartão importado neste mês." />
         ) : (
@@ -1833,9 +2055,16 @@ function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete
               </thead>
               <tbody>
                 {doMes.map((t) => (
-                  <tr key={t.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
+                  <tr key={t.id} className={`border-b border-slate-50 hover:bg-emerald-50/30 transition ${t.confirmado === false ? 'bg-amber-50/40' : ''}`}>
                     <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">{formatDateBR(t.data)}</td>
-                    <td className="px-2 py-2.5 text-slate-700 max-w-[160px] truncate">{t.descricao}</td>
+                    <td className="px-2 py-2.5 text-slate-700 max-w-[160px]">
+                      <div className="truncate">{t.descricao}</div>
+                      {t.confirmado === false && (
+                        <div className="text-[10px] text-amber-600 flex items-center gap-1 mt-0.5">
+                          <Icon name="AlertTriangle" size={10} /> aguardando extrato
+                        </div>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5">
                       <select
                         value={t.categoria}
@@ -1896,6 +2125,15 @@ function CartaoTab({ transacoes, orcamentos, onImport, onEditCategoria, onDelete
           </div>
         )}
       </Card>
+
+      <LancamentoCartaoModal
+        open={modalManualOpen}
+        onClose={() => setModalManualOpen(false)}
+        onSave={(data) => {
+          onAddManual({ ...data, id: uid(), confirmado: false });
+          setModalManualOpen(false);
+        }}
+      />
     </div>
   );
 }
@@ -2126,8 +2364,68 @@ function AtivoCard({ ativo, movimentacoes, onEdit, onDelete, onAddMov, onDeleteM
   );
 }
 
+function statusEmprestimo(e) {
+  const recebido = e.valorRecebido || 0;
+  if (recebido >= e.valor) return 'Recebido';
+  if (recebido > 0) return 'Parcial';
+  if (e.dataPrevista && e.dataPrevista < todayStr()) return 'Em atraso';
+  return 'A receber';
+}
+
+function RecebimentoModal({ open, onClose, onSave, emprestimo }) {
+  const [valor, setValor] = useState('');
+
+  useEffect(() => { if (open) setValor(''); }, [open]);
+
+  if (!open || !emprestimo) return null;
+  const recebidoAtual = emprestimo.valorRecebido || 0;
+  const falta = Math.max(emprestimo.valor - recebidoAtual, 0);
+  const numero = Number(valor);
+  const valido = numero > 0;
+
+  const submit = () => {
+    if (!valido) return;
+    onSave(emprestimo, numero);
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-slate-800">Registrar recebimento · {emprestimo.pessoa}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          Já recebido: <b className="text-emerald-600">{formatBRL(recebidoAtual)}</b> de {formatBRL(emprestimo.valor)} · Falta {formatBRL(falta)}
+        </p>
+        <label className="text-xs font-medium text-slate-500">Valor recebido agora (R$)</label>
+        <input
+          type="number" min="0" step="0.01" autoFocus
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          placeholder="0,00"
+          className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+        />
+        {numero > falta && falta > 0 && (
+          <p className="text-[11px] text-amber-600 mt-1.5">
+            Esse valor é maior que o restante — vou registrar só {formatBRL(falta)} (o total da dívida).
+          </p>
+        )}
+        <button
+          onClick={submit}
+          disabled={!valido}
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Confirmar recebimento
+        </button>
+      </div>
+    </div>
+  );
+}
 function EmprestimoModal({ open, onClose, onSave, initial }) {
-  const blank = { pessoa: '', descricao: '', valor: '', data: todayStr(), dataPrevista: '', quitado: false };
+  const blank = { pessoa: '', descricao: '', valor: '', data: todayStr(), dataPrevista: '' };
   const [form, setForm] = useState(blank);
 
   useEffect(() => {
@@ -2140,7 +2438,7 @@ function EmprestimoModal({ open, onClose, onSave, initial }) {
 
   const submit = () => {
     if (!valid) return;
-    onSave({ ...form, valor: Number(form.valor) });
+    onSave({ ...form, valor: Number(form.valor), valorRecebido: initial ? initial.valorRecebido || 0 : 0 });
   };
 
   return (
@@ -2201,15 +2499,6 @@ function EmprestimoModal({ open, onClose, onSave, initial }) {
               className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600 pt-1">
-            <input
-              type="checkbox"
-              checked={form.quitado}
-              onChange={(e) => setForm({ ...form, quitado: e.target.checked })}
-              className="accent-emerald-600 w-4 h-4"
-            />
-            Já foi devolvido
-          </label>
         </div>
         <button
           onClick={submit}
@@ -2224,18 +2513,18 @@ function EmprestimoModal({ open, onClose, onSave, initial }) {
 }
 
 function InvestimentosTab({
-  ativos, movimentacoes, meta, emprestimos, simulacao,
+  ativos, movimentacoes, meta, emprestimos,
   onAddAtivo, onEditAtivo, onDeleteAtivo,
   onAddMov, onDeleteMov,
   onSaveMeta,
-  onAddEmprestimo, onEditEmprestimo, onDeleteEmprestimo, onToggleEmprestimo,
-  onSaveSimulacao,
+  onAddEmprestimo, onEditEmprestimo, onDeleteEmprestimo, onReceberEmprestimo,
 }) {
   const [ativoModalOpen, setAtivoModalOpen] = useState(false);
   const [editandoAtivo, setEditandoAtivo] = useState(null);
   const [movAtivo, setMovAtivo] = useState(null);
   const [emprestimoModalOpen, setEmprestimoModalOpen] = useState(false);
   const [editandoEmprestimo, setEditandoEmprestimo] = useState(null);
+  const [recebendoEmprestimo, setRecebendoEmprestimo] = useState(null);
   const [periodoView, setPeriodoView] = useState('mes'); // mes | total
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth() + 1);
@@ -2279,34 +2568,9 @@ function InvestimentosTab({
   const metaMeses = meta?.prazo ? monthsUntil(meta.prazo) : null;
   const metaPorMes = metaMeses && metaMeses > 0 ? metaFalta / metaMeses : null;
 
-  // Simulação
-  const [sim, setSim] = useState(simulacao || { valorInicial: '', aporteMensal: '', taxaCarteira: '', taxaMercado: '', meses: 24 });
-  useEffect(() => { if (simulacao) setSim(simulacao); }, [simulacao]);
-
-  const dadosSimulacao = useMemo(() => {
-    const vi = Number(sim.valorInicial) || patrimonioTotal;
-    const ap = Number(sim.aporteMensal) || 0;
-    const tc = (Number(sim.taxaCarteira) || 0) / 100;
-    const tm = (Number(sim.taxaMercado) || 0) / 100;
-    const n = Math.min(Math.max(Number(sim.meses) || 0, 1), 240);
-    let carteira = vi;
-    let mercado = vi;
-    const arr = [{ mes: 0, Carteira: vi, Mercado: vi }];
-    for (let i = 1; i <= n; i += 1) {
-      carteira = carteira * (1 + tc) + ap;
-      mercado = mercado * (1 + tm) + ap;
-      arr.push({ mes: i, Carteira: Math.round(carteira * 100) / 100, Mercado: Math.round(mercado * 100) / 100 });
-    }
-    return arr;
-  }, [sim, patrimonioTotal]);
-
-  const finalCarteira = dadosSimulacao[dadosSimulacao.length - 1]?.Carteira || 0;
-  const finalMercado = dadosSimulacao[dadosSimulacao.length - 1]?.Mercado || 0;
-  const diffFinal = finalCarteira - finalMercado;
-
   // Empréstimos
-  const emprestimosPendentes = emprestimos.filter((e) => !e.quitado);
-  const totalPendente = emprestimosPendentes.reduce((s, e) => s + e.valor, 0);
+  const emprestimosPendentes = emprestimos.filter((e) => statusEmprestimo(e) !== 'Recebido');
+  const totalPendente = emprestimosPendentes.reduce((s, e) => s + (e.valor - (e.valorRecebido || 0)), 0);
 
   return (
     <div className="pb-24 space-y-4">
@@ -2325,7 +2589,7 @@ function InvestimentosTab({
         <EmptyState text="Cadastre seu primeiro ativo para começar a acompanhar." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {ativos.map((a) => (
+          {[...ativos].sort((a, b) => patrimonioDoAtivo(b, movimentacoes) - patrimonioDoAtivo(a, movimentacoes)).map((a) => (
             <AtivoCard
               key={a.id}
               ativo={a}
@@ -2425,79 +2689,6 @@ function InvestimentosTab({
         )}
       </Card>
 
-      <Card className="p-4">
-        <SectionTitle icon="Activity" title="Simulação de rendimento" subtitle="Compare sua carteira com uma rentabilidade de mercado" />
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="text-xs font-medium text-slate-500">Valor inicial (R$)</label>
-            <input
-              type="number" step="0.01"
-              value={sim.valorInicial}
-              onChange={(e) => setSim({ ...sim, valorInicial: e.target.value })}
-              onBlur={() => onSaveSimulacao(sim)}
-              placeholder={String(patrimonioTotal)}
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500">Aporte mensal (R$)</label>
-            <input
-              type="number" step="0.01"
-              value={sim.aporteMensal}
-              onChange={(e) => setSim({ ...sim, aporteMensal: e.target.value })}
-              onBlur={() => onSaveSimulacao(sim)}
-              placeholder="0,00"
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">Sua carteira (% a.m.)</label>
-            <input
-              type="number" step="0.01"
-              value={sim.taxaCarteira}
-              onChange={(e) => setSim({ ...sim, taxaCarteira: e.target.value })}
-              onBlur={() => onSaveSimulacao(sim)}
-              placeholder="0,80"
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 flex items-center gap-1">Mercado/benchmark (% a.m.)</label>
-            <input
-              type="number" step="0.01"
-              value={sim.taxaMercado}
-              onChange={(e) => setSim({ ...sim, taxaMercado: e.target.value })}
-              onBlur={() => onSaveSimulacao(sim)}
-              placeholder="Ex: CDI ≈ 0,90"
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs font-medium text-slate-500">Período (meses)</label>
-            <input
-              type="number" min="1" max="240"
-              value={sim.meses}
-              onChange={(e) => setSim({ ...sim, meses: e.target.value })}
-              onBlur={() => onSaveSimulacao(sim)}
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-            />
-          </div>
-        </div>
-
-        <LineChartSimple
-          data={dadosSimulacao}
-          seriesKeys={['Carteira', 'Mercado']}
-          seriesColors={{ Carteira: '#059669', Mercado: '#94a3b8' }}
-          seriesDash={{ Mercado: '5 4' }}
-          height={200}
-        />
-        <div className={`text-xs mt-2 font-medium ${diffFinal >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-          {diffFinal >= 0
-            ? `Sua carteira projeta ${formatBRL(diffFinal)} a mais que o mercado no período.`
-            : `Sua carteira projeta ${formatBRL(Math.abs(diffFinal))} a menos que o mercado no período.`}
-        </div>
-      </Card>
-
       <Card className="overflow-hidden">
         <div className="p-4 flex items-center justify-between">
           <SectionTitle icon="Users" title="Valores pendentes a receber" subtitle={`${emprestimosPendentes.length} em aberto · ${formatBRL(totalPendente)}`} right={null} />
@@ -2515,8 +2706,7 @@ function InvestimentosTab({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
-                  <th className="px-4 py-2 font-medium">Recebido</th>
-                  <th className="px-2 py-2 font-medium">Quem deve</th>
+                  <th className="px-4 py-2 font-medium">Quem deve</th>
                   <th className="px-2 py-2 font-medium hidden sm:table-cell">Descrição</th>
                   <th className="px-2 py-2 font-medium text-right">Valor</th>
                   <th className="px-2 py-2 font-medium">Status</th>
@@ -2524,24 +2714,27 @@ function InvestimentosTab({
                 </tr>
               </thead>
               <tbody>
-                {[...emprestimos].sort((a, b) => a.data.localeCompare(b.data)).map((e) => {
-                  const status = e.quitado ? 'Recebido' : (e.dataPrevista && e.dataPrevista < todayStr() ? 'Em atraso' : 'A receber');
+                {[...emprestimos].sort((a, b) => (b.valor - (b.valorRecebido || 0)) - (a.valor - (a.valorRecebido || 0))).map((e) => {
+                  const status = statusEmprestimo(e);
+                  const recebido = e.valorRecebido || 0;
                   return (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
-                      <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => onToggleEmprestimo(e)}
-                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${e.quitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
-                        >
-                          <Icon name="Check" size={14} />
-                        </button>
-                      </td>
-                      <td className="px-2 py-2.5 text-slate-700">{e.pessoa}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{e.pessoa}</td>
                       <td className="px-2 py-2.5 hidden sm:table-cell text-slate-500 max-w-[160px] truncate">{e.descricao}</td>
-                      <td className="px-2 py-2.5 text-right font-medium text-emerald-600 whitespace-nowrap">{formatBRL(e.valor)}</td>
+                      <td className="px-2 py-2.5 text-right whitespace-nowrap">
+                        <div className="font-medium text-emerald-600">{formatBRL(e.valor)}</div>
+                        {status === 'Parcial' && (
+                          <div className="text-[10px] text-blue-500">recebido {formatBRL(recebido)}</div>
+                        )}
+                      </td>
                       <td className="px-2 py-2.5"><Badge status={status} /></td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center justify-end gap-1">
+                          {status !== 'Recebido' && (
+                            <button onClick={() => setRecebendoEmprestimo(e)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                              <Icon name="PiggyBank" size={13} />
+                            </button>
+                          )}
                           <button onClick={() => { setEditandoEmprestimo(e); setEmprestimoModalOpen(true); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
                             <Icon name="Pencil" size={13} />
                           </button>
@@ -2585,6 +2778,15 @@ function InvestimentosTab({
           setEmprestimoModalOpen(false);
         }}
       />
+      <RecebimentoModal
+        open={!!recebendoEmprestimo}
+        emprestimo={recebendoEmprestimo}
+        onClose={() => setRecebendoEmprestimo(null)}
+        onSave={(emprestimo, valor) => {
+          onReceberEmprestimo(emprestimo, valor);
+          setRecebendoEmprestimo(null);
+        }}
+      />
     </div>
   );
 }
@@ -2612,7 +2814,6 @@ function App() {
   const [investMovimentacoes, setInvestMovimentacoes] = useState([]);
   const [investMeta, setInvestMeta] = useState({ valorAlvo: 0, prazo: '' });
   const [investEmprestimos, setInvestEmprestimos] = useState([]);
-  const [investSimulacao, setInvestSimulacao] = useState({ valorInicial: '', aporteMensal: '', taxaCarteira: '', taxaMercado: '', meses: 24 });
   const [errorMsg, setErrorMsg] = useState(null);
   const [savingState, setSavingState] = useState('idle'); // idle | saving | saved | error
   const [ultimaSincronia, setUltimaSincronia] = useState(null);
@@ -2631,7 +2832,6 @@ function App() {
       if (dados.investMovimentacoes) setInvestMovimentacoes(dados.investMovimentacoes);
       if (dados.investMeta) setInvestMeta(dados.investMeta);
       if (dados.investEmprestimos) setInvestEmprestimos(dados.investEmprestimos);
-      if (dados.investSimulacao) setInvestSimulacao(dados.investSimulacao);
       setUltimaSincronia(new Date());
       if (silencioso) setErrorMsg(null);
     } catch (e) {
@@ -2730,9 +2930,20 @@ function App() {
   const deleteMeta = (meta) => persist('metas', metas.filter((m) => m.id !== meta.id), setMetas);
   const aportarMeta = (editada) => persist('metas', metas.map((m) => (m.id === editada.id ? editada : m)), setMetas);
 
-  const importarCartao = (novas) => persist('cartaoTransacoes', [...cartaoTransacoes, ...novas], setCartaoTransacoes);
+  const importarCartao = (novas, atualizacoes = []) => {
+    let base = cartaoTransacoes;
+    if (atualizacoes.length > 0) {
+      base = base.map((t) => {
+        const upd = atualizacoes.find((a) => a.id === t.id);
+        return upd ? { ...t, ...upd.patch } : t;
+      });
+    }
+    persist('cartaoTransacoes', [...base, ...novas], setCartaoTransacoes);
+  };
+  const addManualCartao = (entry) => persist('cartaoTransacoes', [...cartaoTransacoes, entry], setCartaoTransacoes);
   const editarCategoriaCartao = (editada) => persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
   const excluirCartao = (t) => persist('cartaoTransacoes', cartaoTransacoes.filter((x) => x.id !== t.id), setCartaoTransacoes);
+  const limparCartao = () => persist('cartaoTransacoes', [], setCartaoTransacoes);
 
   const addAtivo = (ativo) => persist('investAtivos', [...investAtivos, ativo], setInvestAtivos);
   const editAtivo = (editado) => persist('investAtivos', investAtivos.map((a) => (a.id === editado.id ? editado : a)), setInvestAtivos);
@@ -2744,11 +2955,14 @@ function App() {
   const addMov = (mov) => persist('investMovimentacoes', [...investMovimentacoes, mov], setInvestMovimentacoes);
   const deleteMov = (mov) => persist('investMovimentacoes', investMovimentacoes.filter((m) => m.id !== mov.id), setInvestMovimentacoes);
   const saveInvestMeta = (novaMeta) => persist('investMeta', novaMeta, setInvestMeta);
-  const saveInvestSimulacao = (novaSim) => persist('investSimulacao', novaSim, setInvestSimulacao);
   const addEmprestimo = (e) => persist('investEmprestimos', [...investEmprestimos, e], setInvestEmprestimos);
   const editEmprestimo = (editado) => persist('investEmprestimos', investEmprestimos.map((x) => (x.id === editado.id ? editado : x)), setInvestEmprestimos);
   const deleteEmprestimo = (e) => persist('investEmprestimos', investEmprestimos.filter((x) => x.id !== e.id), setInvestEmprestimos);
-  const toggleEmprestimo = (e) => persist('investEmprestimos', investEmprestimos.map((x) => (x.id === e.id ? { ...x, quitado: !x.quitado } : x)), setInvestEmprestimos);
+  const receberEmprestimo = (emprestimo, valor) => {
+    const recebidoAtual = emprestimo.valorRecebido || 0;
+    const novoRecebido = Math.min(recebidoAtual + valor, emprestimo.valor);
+    persist('investEmprestimos', investEmprestimos.map((x) => (x.id === emprestimo.id ? { ...x, valorRecebido: novoRecebido } : x)), setInvestEmprestimos);
+  };
 
   return (
     <div className="pf-root min-h-screen bg-gradient-to-b from-emerald-50/40 to-white">
@@ -2862,8 +3076,10 @@ function App() {
                 transacoes={cartaoTransacoes}
                 orcamentos={orcamentos}
                 onImport={importarCartao}
+                onAddManual={addManualCartao}
                 onEditCategoria={editarCategoriaCartao}
                 onDelete={excluirCartao}
+                onClearAll={limparCartao}
               />
             )}
             {tab === 'investimentos' && (
@@ -2872,7 +3088,6 @@ function App() {
                 movimentacoes={investMovimentacoes}
                 meta={investMeta}
                 emprestimos={investEmprestimos}
-                simulacao={investSimulacao}
                 onAddAtivo={addAtivo}
                 onEditAtivo={editAtivo}
                 onDeleteAtivo={deleteAtivo}
@@ -2882,8 +3097,7 @@ function App() {
                 onAddEmprestimo={addEmprestimo}
                 onEditEmprestimo={editEmprestimo}
                 onDeleteEmprestimo={deleteEmprestimo}
-                onToggleEmprestimo={toggleEmprestimo}
-                onSaveSimulacao={saveInvestSimulacao}
+                onReceberEmprestimo={receberEmprestimo}
               />
             )}
             {tab === 'metas' && (
