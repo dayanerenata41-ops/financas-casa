@@ -1633,6 +1633,9 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
 /* --------------------------------- Cartão de Crédito ------------------------ */
 
 function ImportarExtrato({ onConfirm, pendentes }) {
+  const agora = new Date();
+  const [mesFatura, setMesFatura] = useState(agora.getMonth() + 1);
+  const [anoFatura, setAnoFatura] = useState(agora.getFullYear());
   const [rows, setRows] = useState(null); // array de arrays cru
   const [headerRow, setHeaderRow] = useState(1);
   const [colData, setColData] = useState(-1);
@@ -1644,6 +1647,7 @@ function ImportarExtrato({ onConfirm, pendentes }) {
   const [carregando, setCarregando] = useState(false);
   const fileRef = useRef(null);
 
+  const mkFatura = monthKey(anoFatura, mesFatura);
   const headers = rows ? (rows[headerRow - 1] || []) : [];
   const dataRows = rows ? rows.slice(headerRow) : [];
 
@@ -1681,11 +1685,10 @@ function ImportarExtrato({ onConfirm, pendentes }) {
         const descricao = String(r[colDesc] || '').trim();
         const valor = parseValorLivre(r[colValor]);
         const valorAbs = Math.abs(valor);
-        const mesRow = data ? data.slice(0, 7) : '';
         const match = (pendentes || []).find((p) => (
           !usados.has(p.id)
           && Math.abs(p.valor - valorAbs) < 0.01
-          && (!mesRow || p.data.slice(0, 7) === mesRow)
+          && (p.mesFatura || p.data.slice(0, 7)) === mkFatura
         ));
         if (match) usados.add(match.id);
         return {
@@ -1697,12 +1700,11 @@ function ImportarExtrato({ onConfirm, pendentes }) {
           categoria: match ? match.categoria : sugerirCategoria(descricao),
           incluir: valor !== 0 && !!data && !!descricao,
           correspondeId: match ? match.id : null,
-          descricaoOriginalLancada: match ? match.descricao : null,
         };
       });
     setLinhas(novas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, headerRow, colData, colDesc, colValor, formatoData, pendentes]);
+  }, [rows, headerRow, colData, colDesc, colValor, formatoData, pendentes, mkFatura]);
 
   const reset = () => {
     setRows(null); setLinhas([]); setErro(null);
@@ -1718,10 +1720,10 @@ function ImportarExtrato({ onConfirm, pendentes }) {
     if (selecionadas.length === 0) return;
     const novos = selecionadas
       .filter((l) => !l.correspondeId)
-      .map((l) => ({ id: uid(), data: l.data, descricao: l.descricao, valor: l.valorAbs, categoria: l.categoria, confirmado: true }));
+      .map((l) => ({ id: uid(), data: l.data, descricao: l.descricao, valor: l.valorAbs, categoria: l.categoria, confirmado: true, mesFatura: mkFatura }));
     const atualizacoes = selecionadas
       .filter((l) => l.correspondeId)
-      .map((l) => ({ id: l.correspondeId, patch: { data: l.data, descricao: l.descricao, categoria: l.categoria, confirmado: true } }));
+      .map((l) => ({ id: l.correspondeId, patch: { data: l.data, descricao: l.descricao, categoria: l.categoria, confirmado: true, mesFatura: mkFatura } }));
     onConfirm(novos, atualizacoes);
     reset();
   };
@@ -1733,6 +1735,12 @@ function ImportarExtrato({ onConfirm, pendentes }) {
         title="Importar extrato do cartão"
         subtitle="Aceita planilha Excel (.xlsx/.xls) ou CSV"
       />
+
+      <div className="bg-emerald-50/60 rounded-xl p-3 mb-3">
+        <label className="text-[11px] font-medium text-slate-500">Essa fatura é de qual mês?</label>
+        <p className="text-[11px] text-slate-400 mb-1.5">Todas as compras desse extrato entram na análise desse mês, mesmo as feitas em outro mês (comum quando a fatura fecha antes do fim do mês).</p>
+        <MonthYearPicker mes={mesFatura} ano={anoFatura} onChange={(m, y) => { setMesFatura(m); setAnoFatura(y); }} />
+      </div>
 
       {!rows && (
         <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-emerald-200 rounded-2xl py-10 cursor-pointer hover:bg-emerald-50/40 transition text-center px-4">
@@ -1879,7 +1887,11 @@ function ImportarExtrato({ onConfirm, pendentes }) {
 }
 
 function LancamentoCartaoModal({ open, onClose, onSave }) {
-  const blank = { descricao: '', categoria: CATEGORIAS_PAGAR[0], valor: '', data: todayStr() };
+  const agora = new Date();
+  const blank = {
+    descricao: '', categoria: CATEGORIAS_PAGAR[0], valor: '', data: todayStr(),
+    mesFaturaMes: agora.getMonth() + 1, mesFaturaAno: agora.getFullYear(),
+  };
   const [form, setForm] = useState(blank);
 
   useEffect(() => { if (open) setForm(blank); }, [open]);
@@ -1888,7 +1900,13 @@ function LancamentoCartaoModal({ open, onClose, onSave }) {
 
   const submit = () => {
     if (!valid) return;
-    onSave({ ...form, valor: Number(form.valor) });
+    onSave({
+      descricao: form.descricao,
+      categoria: form.categoria,
+      data: form.data,
+      valor: Number(form.valor),
+      mesFatura: monthKey(form.mesFaturaAno, form.mesFaturaMes),
+    });
   };
 
   return (
@@ -1935,12 +1953,22 @@ function LancamentoCartaoModal({ open, onClose, onSave }) {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-500">Data</label>
+              <label className="text-xs font-medium text-slate-500">Data da compra</label>
               <input
                 type="date"
                 value={form.data}
                 onChange={(e) => setForm({ ...form, data: e.target.value })}
                 className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500">Entra na fatura de qual mês?</label>
+            <div className="mt-1">
+              <MonthYearPicker
+                mes={form.mesFaturaMes}
+                ano={form.mesFaturaAno}
+                onChange={(m, y) => setForm({ ...form, mesFaturaMes: m, mesFaturaAno: y })}
               />
             </div>
           </div>
@@ -1964,7 +1992,7 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onEditCatego
   const [ano, setAno] = useState(now.getFullYear());
   const mk = monthKey(ano, mes);
 
-  const doMes = useMemo(() => [...transacoes.filter((t) => t.data.slice(0, 7) === mk)].sort((a, b) => a.data.localeCompare(b.data)), [transacoes, mk]);
+  const doMes = useMemo(() => [...transacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) === mk)].sort((a, b) => a.data.localeCompare(b.data)), [transacoes, mk]);
   const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
 
   // últimos 6 meses para comparativo
@@ -1986,7 +2014,7 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onEditCatego
   const dadosComparativo = useMemo(() => ultimosMeses.map(({ mk: k, label }) => {
     const row = { mes: label };
     topCategorias.forEach((c) => {
-      row[c] = transacoes.filter((t) => t.data.slice(0, 7) === k && t.categoria === c).reduce((s, t) => s + t.valor, 0);
+      row[c] = transacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) === k && t.categoria === c).reduce((s, t) => s + t.valor, 0);
     });
     return row;
   }), [ultimosMeses, topCategorias, transacoes]);
@@ -2056,7 +2084,12 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onEditCatego
               <tbody>
                 {doMes.map((t) => (
                   <tr key={t.id} className={`border-b border-slate-50 hover:bg-emerald-50/30 transition ${t.confirmado === false ? 'bg-amber-50/40' : ''}`}>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">{formatDateBR(t.data)}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">
+                      {formatDateBR(t.data)}
+                      {t.data.slice(0, 7) !== mk && (
+                        <div className="text-[10px] text-slate-400">compra de {MESES[Number(t.data.slice(5, 7)) - 1].slice(0, 3)}</div>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5 text-slate-700 max-w-[160px]">
                       <div className="truncate">{t.descricao}</div>
                       {t.confirmado === false && (
