@@ -289,212 +289,163 @@ function dreBom(realizado, orcado, maisEhMelhor) {
   return maisEhMelhor ? realizado >= orcado : realizado <= orcado;
 }
 
-function DreChip({ realizado, orcado, maisEhMelhor }) {
-  if (!orcado) return <span className="text-[10px] text-slate-400">sem orçado</span>;
-  const dif = Math.abs(realizado - orcado);
-  const bom = dreBom(realizado, orcado, maisEhMelhor);
-  let texto;
-  if (dif < 0.005) texto = 'no orçado';
-  else if (maisEhMelhor) texto = realizado > orcado ? `${formatBRL(dif)} acima` : `faltam ${formatBRL(dif)}`;
-  else texto = realizado < orcado ? `sobram ${formatBRL(dif)}` : `${formatBRL(dif)} acima`;
+function DreMiniBarra({ pct, cor }) {
   return (
-    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${bom ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
-      {texto}
-    </span>
-  );
-}
-
-function DreBarraOrcado({ realizado, orcado, cor, maisEhMelhor, altura = 'h-2' }) {
-  const max = Math.max(realizado, orcado, 1);
-  const bom = !orcado || dreBom(realizado, orcado, maisEhMelhor);
-  return (
-    <div className={`relative ${altura} bg-slate-100 rounded-full`}>
-      <div className="h-full rounded-full transition-all" style={{ width: `${(Math.max(realizado, 0) / max) * 100}%`, background: bom ? '#10b981' : '#f43f5e' }} />
-      {orcado > 0 && (
-        <div title={`Orçado: ${formatBRL(orcado)}`} className="absolute -top-1 -bottom-1 w-[3px] rounded bg-slate-700" style={{ left: `calc(${(orcado / max) * 100}% - 1.5px)` }} />
-      )}
+    <div className="w-14 sm:w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden shrink-0">
+      <div className="h-full rounded-full" style={{ width: `${Math.min(Math.max(pct, 0), 1) * 100}%`, background: cor }} />
     </div>
   );
 }
 
-function DreSecao({ titulo, linhas, cor, modo, maisEhMelhor }) {
-  const totalRealizado = linhas.reduce((s, l) => s + l.realizado, 0);
-  const totalOrcado = linhas.reduce((s, l) => s + l.orcado, 0);
-  const orcado = modo === 'orcado';
-  return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-3">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: cor }} />
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{titulo}</span>
-        </div>
-        <span className="text-sm font-semibold pf-num" style={{ color: cor }}>{formatBRL(totalRealizado)}</span>
-      </div>
-      {linhas.length === 0 ? (
-        <div className="text-xs text-slate-300 pb-1">Nenhum lançamento</div>
-      ) : (
-        <div className="space-y-2.5">
-          {linhas.map((l) => (
-            <div key={l.categoria}>
-              <div className="flex items-center justify-between gap-2 text-xs mb-1">
-                <span className="text-slate-600 truncate">{l.categoria}</span>
-                <span className="font-medium text-slate-700 pf-num shrink-0">{formatBRL(l.realizado)}</span>
-              </div>
-              {orcado ? (
-                <>
-                  <DreBarraOrcado realizado={l.realizado} orcado={l.orcado} cor={cor} maisEhMelhor={maisEhMelhor} />
-                  <div className="flex items-center justify-between gap-2 mt-1">
-                    <span className="text-[10px] text-slate-400 pf-num">
-                      Orçado {formatBRL(l.orcado)}{l.orcado > 0 ? ` · ${Math.round((l.realizado / l.orcado) * 100)}%` : ''}
-                    </span>
-                    <DreChip realizado={l.realizado} orcado={l.orcado} maisEhMelhor={maisEhMelhor} />
-                  </div>
-                </>
-              ) : (
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${totalRealizado > 0 ? (l.realizado / totalRealizado) * 100 : 0}%`, background: cor, opacity: 0.75 }} />
-                </div>
-              )}
+// DRE em formato de tabela: seções recolhíveis, linhas de resultado destacadas.
+function DreTabela({ modo, itens, receitaTotal, orcamentos, mk, onSetOrcamento, realizadoPorCategoria }) {
+  const [fechadas, setFechadas] = usePersistentState('dash:dreFechadas', []);
+  const alternar = (id) => setFechadas((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
+  const brl = (v) => formatBRL(v);
+  const cols = modo === 'orcado' ? 5 : 3;
+
+  const celulasValor = (real, orc, mais, { negrito = false, claro = false } = {}) => {
+    if (modo === 'config') {
+      return (
+        <>
+          <td className={`px-3 py-2 text-right pf-num whitespace-nowrap ${claro ? '' : 'text-slate-500'}`}>{brl(real)}</td>
+          <td className="px-3 py-2 text-right pf-num whitespace-nowrap">{orc}</td>
+        </>
+      );
+    }
+    if (modo === 'realizado') {
+      const pct = receitaTotal > 0 ? real / receitaTotal : 0;
+      return (
+        <>
+          <td className={`px-3 py-2 text-right pf-num whitespace-nowrap ${negrito ? 'font-bold' : ''}`}>{brl(real)}</td>
+          <td className="px-3 py-2">
+            <div className="flex items-center justify-end gap-2">
+              {!claro && <DreMiniBarra pct={Math.abs(pct)} cor={real < 0 ? '#f43f5e' : '#10b981'} />}
+              <span className={`w-12 text-right text-[11px] pf-num ${claro ? '' : 'text-slate-400'}`}>{receitaTotal > 0 ? `${(pct * 100).toFixed(0)}%` : '—'}</span>
             </div>
-          ))}
-        </div>
-      )}
-      {orcado && linhas.length > 0 && (
-        <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="font-semibold text-slate-700">Total {titulo.toLowerCase()}</span>
-            <DreChip realizado={totalRealizado} orcado={totalOrcado} maisEhMelhor={maisEhMelhor} />
-          </div>
-          <DreBarraOrcado realizado={totalRealizado} orcado={totalOrcado} cor={cor} maisEhMelhor={maisEhMelhor} altura="h-2.5" />
-          <div className="text-[10px] text-slate-400 mt-1 pf-num">Realizado {formatBRL(totalRealizado)} · orçado {formatBRL(totalOrcado)}</div>
-        </div>
-      )}
+          </td>
+        </>
+      );
+    }
+    const temOrc = orc !== 0;
+    const dif = real - orc;
+    const bom = dreBom(real, orc, mais);
+    const pct = temOrc ? real / orc : 0;
+    const corDif = claro ? '' : !temOrc ? 'text-slate-300' : bom ? 'text-emerald-600' : 'text-rose-600';
+    return (
+      <>
+        <td className={`px-3 py-2 text-right pf-num whitespace-nowrap ${negrito ? 'font-bold' : ''}`}>{brl(real)}</td>
+        <td className={`px-3 py-2 text-right pf-num whitespace-nowrap ${claro ? '' : 'text-slate-500'}`}>{temOrc ? brl(orc) : '—'}</td>
+        <td className={`px-3 py-2 text-right pf-num whitespace-nowrap font-medium ${corDif}`}>{temOrc ? `${dif > 0 ? '+' : ''}${brl(dif)}` : '—'}</td>
+        <td className="px-3 py-2">
+          {temOrc ? (
+            <div className="flex items-center justify-end gap-2">
+              {!claro && <DreMiniBarra pct={pct} cor={bom ? '#10b981' : '#f43f5e'} />}
+              <span className={`w-10 text-right text-[11px] pf-num ${claro ? '' : bom ? 'text-emerald-600' : 'text-rose-600'}`}>{(pct * 100).toFixed(0)}%</span>
+            </div>
+          ) : <div className="text-right text-slate-300">—</div>}
+        </td>
+      </>
+    );
+  };
+
+  const inputOrcado = (c) => (
+    <div className="relative inline-block">
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">R$</span>
+      <input
+        key={`${c}-${mk}`}
+        type="number" min="0" step="0.01"
+        defaultValue={orcamentos?.[c]?.[mk] ?? ''}
+        onBlur={(e) => {
+          const novo = Number(e.target.value) || 0;
+          if (novo !== (Number(orcamentos?.[c]?.[mk]) || 0)) onSetOrcamento(c, mk, novo);
+        }}
+        placeholder="0,00"
+        className="w-28 text-xs text-right border border-slate-200 bg-white rounded-lg pl-7 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+      />
     </div>
   );
-}
 
-function DreLinha({ label, valor, valorOrcado, modo, grande }) {
-  const negativo = valor < 0;
-  const mostrarOrcado = modo === 'orcado' && valorOrcado != null;
   return (
-    <div className={`rounded-2xl px-4 py-3 ${grande ? (negativo ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white' : 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white') : 'bg-slate-50 border border-slate-100'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className={`font-semibold text-sm ${grande ? '' : 'text-slate-700'}`}>{label}</span>
-        <span className={`font-bold pf-num ${grande ? 'text-xl' : `text-base ${negativo ? 'text-rose-600' : 'text-emerald-700'}`}`}>{formatBRL(valor)}</span>
-      </div>
-      {mostrarOrcado && (
-        <div className="flex items-center justify-between gap-2 mt-1">
-          <span className={`text-[11px] pf-num ${grande ? 'text-white/80' : 'text-slate-400'}`}>Orçado {formatBRL(valorOrcado)}</span>
-          {grande ? (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/20 text-white whitespace-nowrap">
-              {valor >= valorOrcado ? `${formatBRL(valor - valorOrcado)} acima` : `${formatBRL(valorOrcado - valor)} abaixo`}
-            </span>
-          ) : (
-            <DreChip realizado={valor} orcado={valorOrcado} maisEhMelhor />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Cascata do resultado: receitas, despesas, lucro, entradas e pagamentos extras, lucro real.
-function DreCascata({ passos }) {
-  let acumulado = 0;
-  const barras = passos.map((p) => {
-    if (p.tipo === 'total') { acumulado = p.valor; return { ...p, de: 0, ate: p.valor }; }
-    const de = acumulado;
-    acumulado += p.tipo === 'mais' ? p.valor : -p.valor;
-    return { ...p, de, ate: acumulado };
-  });
-  const minV = Math.min(0, ...barras.map((b) => Math.min(b.de, b.ate)));
-  const maxV = Math.max(1, ...barras.map((b) => Math.max(b.de, b.ate)));
-  const H = 130;
-  const y = (v) => ((maxV - v) / (maxV - minV)) * H;
-  const cores = { total: '#0f766e', mais: '#10b981', menos: '#f43f5e' };
-  return (
-    <div className="overflow-x-auto pf-scroll">
-      <div className="min-w-[420px]">
-        <div className="relative" style={{ height: H + 18 }}>
-          <div className="absolute left-0 right-0 border-t border-dashed border-slate-200" style={{ top: y(0) + 16 }} />
-          <div className="absolute inset-0 flex gap-2" style={{ top: 16 }}>
-            {barras.map((b) => {
-              const topo = y(Math.max(b.de, b.ate));
-              const alt = Math.max(Math.abs(y(b.de) - y(b.ate)), 2);
-              const cor = b.tipo === 'total' && b.valor < 0 ? '#e11d48' : cores[b.tipo];
+    <div className="overflow-x-auto pf-scroll -mx-4 sm:mx-0">
+      <table className={`w-full text-xs ${modo === 'orcado' ? 'min-w-[560px]' : ''}`}>
+        <thead>
+          <tr className="text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-200">
+            <th className="px-3 py-2 text-left font-semibold">Conta</th>
+            {modo === 'realizado' && <><th className="px-3 py-2 text-right font-semibold">Realizado</th><th className="px-3 py-2 text-right font-semibold">% receita</th></>}
+            {modo === 'orcado' && <><th className="px-3 py-2 text-right font-semibold">Realizado</th><th className="px-3 py-2 text-right font-semibold">Orçado</th><th className="px-3 py-2 text-right font-semibold">Diferença</th><th className="px-3 py-2 text-right font-semibold">Atingido</th></>}
+            {modo === 'config' && <><th className="px-3 py-2 text-right font-semibold">Realizado</th><th className="px-3 py-2 text-right font-semibold">Orçado</th></>}
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((it) => {
+            if (it.resultado) {
+              const negativo = it.valor < 0;
+              const final = it.final;
+              const cls = final
+                ? (negativo ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white')
+                : 'bg-emerald-50 text-emerald-900';
               return (
-                <div key={b.label} className="flex-1 relative">
-                  <div className="absolute left-1 right-1 rounded-md" style={{ top: topo, height: alt, background: cor, opacity: b.tipo === 'total' ? 1 : 0.85 }} />
-                  <div className="absolute left-0 right-0 text-center text-[10px] font-semibold text-slate-600 pf-num" style={{ top: topo - 15 }}>
-                    {b.tipo === 'menos' ? '−' : b.tipo === 'mais' ? '+' : ''}{formatInt(b.tipo === 'total' ? b.valor : Math.abs(b.valor))}
-                  </div>
-                </div>
+                <tr key={it.titulo} className={`${cls} font-semibold`}>
+                  <td className={`px-3 ${final ? 'py-3 text-sm' : 'py-2.5'} ${final ? 'rounded-l-xl' : ''}`}>
+                    <span className="inline-flex items-center gap-2">
+                      <span className={`w-5 h-5 rounded-md inline-flex items-center justify-center text-[11px] font-bold ${final ? 'bg-white/20' : 'bg-emerald-600 text-white'}`}>=</span>
+                      {it.titulo}
+                    </span>
+                  </td>
+                  {modo === 'config' ? (
+                    <>
+                      <td className="px-3 py-2 text-right pf-num whitespace-nowrap">{brl(it.valor)}</td>
+                      <td className={`px-3 py-2 text-right pf-num whitespace-nowrap ${final ? 'rounded-r-xl' : ''}`}>{brl(it.orcado)}</td>
+                    </>
+                  ) : celulasValor(it.valor, it.orcado, true, { negrito: true, claro: final })}
+                </tr>
               );
-            })}
-          </div>
-        </div>
-        <div className="flex gap-2 mt-1">
-          {barras.map((b) => <div key={b.label} className="flex-1 text-center text-[10px] text-slate-500 leading-tight">{b.label}</div>)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Configuração do orçado, agrupada como na DRE.
-function DreConfigOrcado({ orcamentos, mk, onSetOrcamento, realizadoPorCategoria, mesLabel }) {
-  const agrupadas = new Set([...DRE_RECEITAS, ...DRE_DESPESAS, ...DRE_ENTRADAS_EXTRAS, ...DRE_PAGAMENTOS_EXTRAS]);
-  const outras = [...new Set([...CATEGORIAS_RECEBER, ...CATEGORIAS_PAGAR])].filter((c) => !agrupadas.has(c));
-  const grupos = [
-    { titulo: 'Receitas', cats: DRE_RECEITAS, cor: '#059669' },
-    { titulo: 'Despesas', cats: DRE_DESPESAS, cor: '#e11d48' },
-    { titulo: 'Entradas extras', cats: DRE_ENTRADAS_EXTRAS, cor: '#0d9488' },
-    { titulo: 'Pagamentos extras', cats: DRE_PAGAMENTOS_EXTRAS, cor: '#f59e0b' },
-    { titulo: 'Outras categorias', cats: outras, cor: '#94a3b8' },
-  ];
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-slate-500">
-        Orçado de <b>{mesLabel}</b>. Digite o valor e saia do campo para salvar. Ao lado aparece o realizado do mês para referência.
-      </p>
-      {grupos.map((g) => {
-        const total = g.cats.reduce((s, c) => s + (Number(orcamentos?.[c]?.[mk]) || 0), 0);
-        return (
-          <div key={g.titulo} className="rounded-2xl border border-slate-100 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: g.cor }} />
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{g.titulo}</span>
-              </div>
-              <span className="text-xs font-semibold text-slate-600 pf-num">Total orçado {formatBRL(total)}</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {g.cats.map((c) => (
-                <div key={c} className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-slate-700 truncate">{c}</div>
-                    <div className="text-[10px] text-slate-400 pf-num">realizado {formatBRL(realizadoPorCategoria[c] || 0)}</div>
-                  </div>
-                  <div className="relative shrink-0">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">R$</span>
-                    <input
-                      key={`${c}-${mk}`}
-                      type="number" min="0" step="0.01"
-                      defaultValue={orcamentos?.[c]?.[mk] ?? ''}
-                      onBlur={(e) => {
-                        const novo = Number(e.target.value) || 0;
-                        if (novo !== (Number(orcamentos?.[c]?.[mk]) || 0)) onSetOrcamento(c, mk, novo);
-                      }}
-                      placeholder="0,00"
-                      className="w-32 text-sm text-right border border-slate-200 bg-white rounded-lg pl-8 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+            }
+            const aberta = !fechadas.includes(it.id);
+            const linhas = modo === 'config'
+              ? it.cats.map((c) => ({ categoria: c, realizado: realizadoPorCategoria[c] || 0, orcado: Number(orcamentos?.[c]?.[mk]) || 0 }))
+              : it.linhas;
+            const total = linhas.reduce((s, l) => s + l.realizado, 0);
+            const totalOrc = linhas.reduce((s, l) => s + l.orcado, 0);
+            return (
+              <React.Fragment key={it.id}>
+                <tr className="border-t border-slate-100 cursor-pointer hover:bg-slate-50/80 select-none" onClick={() => alternar(it.id)}>
+                  <td className="px-3 py-2.5 font-semibold text-slate-700">
+                    <span className="inline-flex items-center gap-2">
+                      <span className={`w-5 h-5 rounded-md inline-flex items-center justify-center text-[12px] font-bold ${it.sinal === '+' ? 'bg-emerald-100 text-emerald-700' : it.sinal === '−' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>{it.sinal}</span>
+                      {it.titulo}
+                      <Icon name="ChevronDown" size={12} className={`text-slate-400 transition ${aberta ? '' : '-rotate-90'}`} />
+                    </span>
+                  </td>
+                  {modo === 'config' ? (
+                    <>
+                      <td className="px-3 py-2.5 text-right pf-num font-semibold text-slate-700 whitespace-nowrap">{brl(total)}</td>
+                      <td className="px-3 py-2.5 text-right pf-num font-semibold text-slate-700 whitespace-nowrap">{brl(totalOrc)}</td>
+                    </>
+                  ) : celulasValor(total, totalOrc, it.mais, { negrito: true })}
+                </tr>
+                {aberta && (linhas.length === 0 ? (
+                  <tr><td colSpan={cols} className="pl-10 pr-3 py-1.5 text-slate-300">Nenhum lançamento</td></tr>
+                ) : linhas.map((l) => (
+                  <tr key={l.categoria} className="text-slate-600 hover:bg-slate-50/60">
+                    <td className="pl-10 pr-3 py-1.5 truncate max-w-[180px]">{l.categoria}</td>
+                    {modo === 'config' ? (
+                      <>
+                        <td className="px-3 py-1.5 text-right pf-num text-slate-400 whitespace-nowrap">{brl(l.realizado)}</td>
+                        <td className="px-3 py-1 text-right">{inputOrcado(l.categoria)}</td>
+                      </>
+                    ) : celulasValor(l.realizado, l.orcado, it.mais)}
+                  </tr>
+                )))}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+      {modo === 'config' && (
+        <p className="text-[11px] text-slate-400 mt-3 px-3 sm:px-0">Digite o orçado de cada categoria e saia do campo para salvar.</p>
+      )}
     </div>
   );
 }
@@ -1047,10 +998,12 @@ function itensDoGrupoCartao(t, cartaoTransacoes) {
     .sort((a, b) => a.data.localeCompare(b.data));
 }
 
-function GrupoCartaoInfo({ itens }) {
+function GrupoCartaoInfo({ itens, valorLancamento }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const total = itens.reduce((s, c) => s + c.valor, 0);
+  const diferenca = (valorLancamento || 0) - total;
+  const diverge = Math.abs(diferenca) >= 0.01;
   return (
     <>
       <button
@@ -1058,15 +1011,21 @@ function GrupoCartaoInfo({ itens }) {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-0.5 ml-1.5 align-middle text-[10px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full px-1.5 py-0.5"
+        className={`inline-flex items-center gap-0.5 ml-1.5 align-middle text-[10px] font-medium rounded-full px-1.5 py-0.5 ${diverge ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}
       >
-        <Icon name="CreditCard" size={10} /> {itens.length}
+        {diverge ? <Icon name="AlertTriangle" size={10} /> : <Icon name="CreditCard" size={10} />} {itens.length}
       </button>
       <PopoverFixo anchorRef={ref} open={open} onClose={() => setOpen(false)} largura={300}>
         <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b border-slate-100">
           <span className="text-xs font-semibold text-slate-700">{itens.length} compra{itens.length !== 1 ? 's' : ''} do cartão</span>
           <span className="text-xs font-semibold text-rose-500 pf-num">{formatBRL(total)}</span>
         </div>
+        {diverge && (
+          <div className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mb-1.5">
+            Diferença de <b>{formatBRL(diferenca)}</b> em relação a este lançamento ({formatBRL(valorLancamento)}).
+            Provavelmente alguma compra mudou de categoria no Cartão depois de ser lançada aqui.
+          </div>
+        )}
         {itens.length === 0 ? (
           <div className="text-xs text-slate-400 px-1 py-2">Nenhuma compra do cartão encontrada para esse mês e categoria.</div>
         ) : (
@@ -1399,7 +1358,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
                       <td className="px-2 py-2.5 text-slate-700 max-w-[200px]">
                         <div className="flex items-center min-w-0">
                           <span className="truncate">{t.descricao}</span>
-                          {grupo && <GrupoCartaoInfo itens={grupo} />}
+                          {grupo && <GrupoCartaoInfo itens={grupo} valorLancamento={t.valor} />}
                         </div>
                       </td>
                       <td className="px-2 py-2.5 hidden sm:table-cell text-slate-500">{t.categoria}</td>
@@ -1660,7 +1619,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
 
       {/* DRE */}
       <Card className="p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <SectionTitle icon="FileSpreadsheet" title="DRE" subtitle={`Resultado de ${MESES[mes - 1]} ${ano}`} right={null} />
           <div className="flex bg-slate-100 rounded-xl p-1 text-xs font-medium shrink-0">
             {[
@@ -1678,49 +1637,28 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
             ))}
           </div>
         </div>
-        {modoDre === 'config' ? (
-          <div className="mt-3 pf-fade">
-            <DreConfigOrcado
-              orcamentos={orcamentos}
-              mk={mk}
-              onSetOrcamento={onSetOrcamento}
-              realizadoPorCategoria={realizadoPorCategoria}
-              mesLabel={`${MESES[mes - 1]} ${ano}`}
-            />
-          </div>
-        ) : (
-          <div className="space-y-3 mt-3 pf-fade">
-            {modoDre === 'realizado' && (
-              <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
-                <DreCascata passos={[
-                  { label: 'Receitas', valor: dreReceitas, tipo: 'total' },
-                  { label: 'Despesas', valor: dreDespesas, tipo: 'menos' },
-                  { label: 'Lucro', valor: dreLucro, tipo: 'total' },
-                  { label: 'Entradas extras', valor: dreEntradasExtras, tipo: 'mais' },
-                  { label: 'Pagamentos extras', valor: drePagamentosExtras, tipo: 'menos' },
-                  { label: 'Lucro real', valor: dreLucroReal, tipo: 'total' },
-                ]} />
-              </div>
-            )}
-            {modoDre === 'orcado' && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 px-1">
-                <span className="flex items-center gap-1.5"><span className="w-4 h-2 rounded-full bg-emerald-500" /> realizado</span>
-                <span className="flex items-center gap-1.5"><span className="w-[3px] h-3 rounded bg-slate-700" /> orçado</span>
-                <span className="flex items-center gap-1.5"><span className="w-4 h-2 rounded-full bg-rose-500" /> fora do esperado</span>
-              </div>
-            )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <DreSecao titulo="Receitas" linhas={linhasDreReceitas} cor="#059669" modo={modoDre} maisEhMelhor />
-              <DreSecao titulo="Despesas" linhas={linhasDreDespesas} cor="#e11d48" modo={modoDre} maisEhMelhor={false} />
-            </div>
-            <DreLinha label="Lucro" valor={dreLucro} valorOrcado={dreLucroOrc} modo={modoDre} />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <DreSecao titulo="Entradas Extras" linhas={linhasDreEntradasExtras} cor="#0d9488" modo={modoDre} maisEhMelhor />
-              <DreSecao titulo="Pagamentos Extras" linhas={linhasDrePagamentosExtras} cor="#f59e0b" modo={modoDre} maisEhMelhor={false} />
-            </div>
-            <DreLinha label="Lucro real" valor={dreLucroReal} valorOrcado={dreLucroRealOrc} modo={modoDre} grande />
-          </div>
-        )}
+        <div className="pf-fade" key={modoDre}>
+          <DreTabela
+            modo={modoDre}
+            receitaTotal={dreReceitas}
+            orcamentos={orcamentos}
+            mk={mk}
+            onSetOrcamento={onSetOrcamento}
+            realizadoPorCategoria={realizadoPorCategoria}
+            itens={[
+              { id: 'rec', sinal: '+', titulo: 'Receitas', linhas: linhasDreReceitas, cats: DRE_RECEITAS, mais: true },
+              { id: 'desp', sinal: '−', titulo: 'Despesas', linhas: linhasDreDespesas, cats: DRE_DESPESAS, mais: false },
+              { resultado: true, titulo: 'Lucro', valor: dreLucro, orcado: dreLucroOrc },
+              { id: 'ent', sinal: '+', titulo: 'Entradas extras', linhas: linhasDreEntradasExtras, cats: DRE_ENTRADAS_EXTRAS, mais: true },
+              { id: 'pag', sinal: '−', titulo: 'Pagamentos extras', linhas: linhasDrePagamentosExtras, cats: DRE_PAGAMENTOS_EXTRAS, mais: false },
+              { resultado: true, final: true, titulo: 'Lucro real', valor: dreLucroReal, orcado: dreLucroRealOrc },
+              ...(modoDre === 'config' ? [{
+                id: 'outras', sinal: '·', titulo: 'Outras categorias', linhas: [], mais: false,
+                cats: [...new Set([...CATEGORIAS_RECEBER, ...CATEGORIAS_PAGAR])].filter((c) => ![...DRE_RECEITAS, ...DRE_DESPESAS, ...DRE_ENTRADAS_EXTRAS, ...DRE_PAGAMENTOS_EXTRAS].includes(c)),
+              }] : []),
+            ]}
+          />
+        </div>
       </Card>
 
       {/* Análise por categoria */}
@@ -4715,7 +4653,35 @@ function App() {
     persist('cartaoTransacoes', [...base, ...novas], setCartaoTransacoes);
   };
   const addManualCartao = (entry) => persist('cartaoTransacoes', [...cartaoTransacoes, entry], setCartaoTransacoes);
-  const editarCategoriaCartao = (editada) => persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
+  const editarCategoriaCartao = (editada) => {
+    const anterior = cartaoTransacoes.find((t) => t.id === editada.id);
+    persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
+    if (!anterior || anterior.categoria === editada.categoria) return;
+    // Se a fatura já foi lançada em Contas a Pagar, move o valor da compra entre os lançamentos agrupados.
+    const mk = anterior.mesFatura || anterior.data.slice(0, 7);
+    const ehDoGrupo = (l, categoria) => l.tipo === 'pagar' && (l.grupoCartao
+      ? l.grupoCartao.mk === mk && l.grupoCartao.categoria === categoria
+      : l.descricao === `Cartão - ${categoria}` && l.data.slice(0, 7) === mk);
+    const origem = lancamentos.find((l) => ehDoGrupo(l, anterior.categoria));
+    if (!origem) return;
+    const valor = anterior.valor;
+    const destino = lancamentos.find((l) => ehDoGrupo(l, editada.categoria));
+    const arred = (v) => Math.round(v * 100) / 100;
+    let lista = lancamentos
+      .map((l) => {
+        if (l.id === origem.id) return { ...l, valor: arred(l.valor - valor) };
+        if (destino && l.id === destino.id) return { ...l, valor: arred(l.valor + valor) };
+        return l;
+      })
+      .filter((l) => !(l.id === origem.id && l.valor <= 0.005));
+    if (!destino) {
+      lista = [...lista, {
+        id: uid(), tipo: 'pagar', descricao: `Cartão - ${editada.categoria}`, categoria: editada.categoria,
+        valor: arred(valor), data: `${mk}-01`, quitado: !!origem.quitado, grupoCartao: { mk, categoria: editada.categoria },
+      }];
+    }
+    persist('lancamentos', lista, setLancamentos);
+  };
   const excluirCartao = (t) => persist('cartaoTransacoes', cartaoTransacoes.filter((x) => x.id !== t.id), setCartaoTransacoes);
   const limparCartaoMes = (mk) => persist('cartaoTransacoes', cartaoTransacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) !== mk), setCartaoTransacoes);
   const replicarCartaoEmContasPagar = (linhasPorCategoria, mk) => {
