@@ -176,6 +176,80 @@ function ColumnChart({ data, seriesKeys, seriesColors, stacked = false, height =
   );
 }
 
+// Gráfico do ano: receita e despesa em barras, saldo em linha, com rótulos sem casas decimais.
+function GraficoAnual({ dados, mesDestaque }) {
+  const W = 880; const H = 300; const P = { l: 10, r: 10, t: 34, b: 28 };
+  const valores = dados.flatMap((d) => [d.receita, d.despesa, d.saldo]);
+  const maxV = Math.max(1, ...valores);
+  const minV = Math.min(0, ...valores);
+  const y = (v) => P.t + ((maxV - v) / (maxV - minV)) * (H - P.t - P.b);
+  const slot = (W - P.l - P.r) / dados.length;
+  const bw = Math.min(24, slot * 0.34);
+  const cx = (i) => P.l + i * slot + slot / 2;
+  const contorno = { paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3, strokeLinejoin: 'round' };
+  const rotuloBarra = (x, v, cor) => {
+    if (!(v > 0)) return null;
+    const alt = y(0) - y(v);
+    const dentro = alt > 46;
+    return (
+      <text
+        x={0} y={0}
+        transform={`translate(${x + bw / 2 + 3}, ${dentro ? y(v) + 6 : y(v) - 4}) rotate(-90)`}
+        textAnchor={dentro ? 'end' : 'start'}
+        fontSize="9.5" fontWeight="600"
+        fill={dentro ? '#fff' : cor}
+      >
+        {formatInt(v)}
+      </text>
+    );
+  };
+  const linha = dados.map((d, i) => `${i ? 'L' : 'M'}${cx(i).toFixed(1)},${y(d.saldo).toFixed(1)}`).join(' ');
+  const caixaRef = useRef(null);
+  useEffect(() => {
+    const el = caixaRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft = Math.max(0, el.scrollWidth * ((mesDestaque - 0.5) / dados.length) - el.clientWidth / 2);
+  }, [mesDestaque, dados.length]);
+  return (
+    <div>
+      <div ref={caixaRef} className="overflow-x-auto pf-scroll">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[720px] h-auto">
+          {dados.map((d, i) => (
+            i + 1 === mesDestaque ? <rect key={`bg${i}`} x={P.l + i * slot + 2} y={P.t - 26} width={slot - 4} height={H - P.t - P.b + 26} rx="10" fill="#ecfdf5" /> : null
+          ))}
+          <line x1={P.l} x2={W - P.r} y1={y(0)} y2={y(0)} stroke="#cbd5e1" />
+          {dados.map((d, i) => {
+            const xr = cx(i) - bw - 1.5;
+            const xd = cx(i) + 1.5;
+            return (
+              <g key={i}>
+                {d.receita > 0 && <rect x={xr} y={y(d.receita)} width={bw} height={Math.max(y(0) - y(d.receita), 1)} rx="4" fill="#10b981" />}
+                {d.despesa > 0 && <rect x={xd} y={y(d.despesa)} width={bw} height={Math.max(y(0) - y(d.despesa), 1)} rx="4" fill="#f43f5e" />}
+                {rotuloBarra(xr - 3, d.receita, '#047857')}
+                {rotuloBarra(xd - 3, d.despesa, '#be123c')}
+                <text x={cx(i)} y={H - 8} textAnchor="middle" fontSize="11" fontWeight={i + 1 === mesDestaque ? '700' : '500'} fill={i + 1 === mesDestaque ? '#047857' : '#64748b'}>{d.mes}</text>
+              </g>
+            );
+          })}
+          <path d={linha} fill="none" stroke="#334155" strokeWidth="2.5" strokeLinejoin="round" />
+          {dados.map((d, i) => (
+            <g key={`s${i}`}>
+              <circle cx={cx(i)} cy={y(d.saldo)} r="4" fill={d.saldo < 0 ? '#e11d48' : '#334155'} stroke="#fff" strokeWidth="1.5" />
+              <text x={cx(i)} y={y(d.saldo) - 9} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={d.saldo < 0 ? '#e11d48' : '#1e293b'} style={contorno}>
+                {formatInt(d.saldo)}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+      <div className="flex flex-wrap gap-4 mt-2 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500" /> Receita</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-500" /> Despesa</span>
+        <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-slate-700" /> Saldo</span>
+      </div>
+    </div>
+  );
+}
 
 /* ----------------------------- Constantes ----------------------------- */
 
@@ -210,67 +284,217 @@ function construirLinhasDre(categorias, tipo, dados, passaFiltro, orcamentos, mk
     .sort((a, b) => b.realizado - a.realizado);
 }
 
-function DreSecao({ titulo, linhas, cor, modo }) {
+// Receitas, entradas e lucro: realizar mais que o orçado é bom. Despesas e pagamentos: realizar menos é bom.
+function dreBom(realizado, orcado, maisEhMelhor) {
+  return maisEhMelhor ? realizado >= orcado : realizado <= orcado;
+}
+
+function DreChip({ realizado, orcado, maisEhMelhor }) {
+  if (!orcado) return <span className="text-[10px] text-slate-400">sem orçado</span>;
+  const dif = Math.abs(realizado - orcado);
+  const bom = dreBom(realizado, orcado, maisEhMelhor);
+  let texto;
+  if (dif < 0.005) texto = 'no orçado';
+  else if (maisEhMelhor) texto = realizado > orcado ? `${formatBRL(dif)} acima` : `faltam ${formatBRL(dif)}`;
+  else texto = realizado < orcado ? `sobram ${formatBRL(dif)}` : `${formatBRL(dif)} acima`;
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${bom ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+      {texto}
+    </span>
+  );
+}
+
+function DreBarraOrcado({ realizado, orcado, cor, maisEhMelhor, altura = 'h-2' }) {
+  const max = Math.max(realizado, orcado, 1);
+  const bom = !orcado || dreBom(realizado, orcado, maisEhMelhor);
+  return (
+    <div className={`relative ${altura} bg-slate-100 rounded-full`}>
+      <div className="h-full rounded-full transition-all" style={{ width: `${(Math.max(realizado, 0) / max) * 100}%`, background: bom ? '#10b981' : '#f43f5e' }} />
+      {orcado > 0 && (
+        <div title={`Orçado: ${formatBRL(orcado)}`} className="absolute -top-1 -bottom-1 w-[3px] rounded bg-slate-700" style={{ left: `calc(${(orcado / max) * 100}% - 1.5px)` }} />
+      )}
+    </div>
+  );
+}
+
+function DreSecao({ titulo, linhas, cor, modo, maisEhMelhor }) {
   const totalRealizado = linhas.reduce((s, l) => s + l.realizado, 0);
   const totalOrcado = linhas.reduce((s, l) => s + l.orcado, 0);
-  const totalDiferenca = totalOrcado - totalRealizado;
+  const orcado = modo === 'orcado';
   return (
-    <div>
-      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{titulo}</div>
-      {linhas.length === 0 ? (
-        <div className="text-xs text-slate-300 pl-2 pb-1">Nenhum lançamento</div>
-      ) : linhas.map((l) => (
-        <div key={l.categoria} className="flex items-center justify-between pl-2 py-0.5 text-xs text-slate-600 gap-2">
-          <span className="truncate">{l.categoria}</span>
-          {modo === 'orcado' ? (
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={cor}>{formatBRL(l.realizado)}</span>
-              <span className="text-slate-400">/ {formatBRL(l.orcado)}</span>
-              <span className={`w-20 text-right ${l.diferenca < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                {l.diferenca >= 0 ? '+' : ''}{formatBRL(l.diferenca)}
-              </span>
-            </div>
-          ) : (
-            <span className={cor}>{formatBRL(l.realizado)}</span>
-          )}
+    <div className="rounded-2xl border border-slate-100 bg-white p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: cor }} />
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{titulo}</span>
         </div>
-      ))}
-      <div className="flex items-center justify-between pt-1 mt-1 border-t border-slate-100 text-sm font-medium gap-2">
-        <span className="text-slate-700">Total {titulo.toLowerCase()}</span>
-        {modo === 'orcado' ? (
-          <div className="flex items-center gap-2 shrink-0">
-            <span className={cor}>{formatBRL(totalRealizado)}</span>
-            <span className="text-slate-400 font-normal text-xs">/ {formatBRL(totalOrcado)}</span>
-            <span className={`w-20 text-right text-xs ${totalDiferenca < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-              {totalDiferenca >= 0 ? '+' : ''}{formatBRL(totalDiferenca)}
-            </span>
-          </div>
-        ) : (
-          <span className={cor}>{formatBRL(totalRealizado)}</span>
-        )}
+        <span className="text-sm font-semibold pf-num" style={{ color: cor }}>{formatBRL(totalRealizado)}</span>
       </div>
+      {linhas.length === 0 ? (
+        <div className="text-xs text-slate-300 pb-1">Nenhum lançamento</div>
+      ) : (
+        <div className="space-y-2.5">
+          {linhas.map((l) => (
+            <div key={l.categoria}>
+              <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                <span className="text-slate-600 truncate">{l.categoria}</span>
+                <span className="font-medium text-slate-700 pf-num shrink-0">{formatBRL(l.realizado)}</span>
+              </div>
+              {orcado ? (
+                <>
+                  <DreBarraOrcado realizado={l.realizado} orcado={l.orcado} cor={cor} maisEhMelhor={maisEhMelhor} />
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="text-[10px] text-slate-400 pf-num">
+                      Orçado {formatBRL(l.orcado)}{l.orcado > 0 ? ` · ${Math.round((l.realizado / l.orcado) * 100)}%` : ''}
+                    </span>
+                    <DreChip realizado={l.realizado} orcado={l.orcado} maisEhMelhor={maisEhMelhor} />
+                  </div>
+                </>
+              ) : (
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${totalRealizado > 0 ? (l.realizado / totalRealizado) * 100 : 0}%`, background: cor, opacity: 0.75 }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {orcado && linhas.length > 0 && (
+        <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="font-semibold text-slate-700">Total {titulo.toLowerCase()}</span>
+            <DreChip realizado={totalRealizado} orcado={totalOrcado} maisEhMelhor={maisEhMelhor} />
+          </div>
+          <DreBarraOrcado realizado={totalRealizado} orcado={totalOrcado} cor={cor} maisEhMelhor={maisEhMelhor} altura="h-2.5" />
+          <div className="text-[10px] text-slate-400 mt-1 pf-num">Realizado {formatBRL(totalRealizado)} · orçado {formatBRL(totalOrcado)}</div>
+        </div>
+      )}
     </div>
   );
 }
 
 function DreLinha({ label, valor, valorOrcado, modo, grande }) {
-  const diferenca = valorOrcado != null ? valorOrcado - valor : null;
+  const negativo = valor < 0;
+  const mostrarOrcado = modo === 'orcado' && valorOrcado != null;
   return (
-    <div className={`flex items-center justify-between rounded-xl px-3 py-2.5 gap-2 ${grande ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-      <span className="font-semibold text-sm text-slate-700">{label}</span>
-      {modo === 'orcado' && valorOrcado != null ? (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className={`font-semibold ${grande ? 'text-base' : 'text-sm'} ${valor < 0 ? 'text-red-500' : 'text-emerald-700'}`}>{formatBRL(valor)}</span>
-          <span className="text-slate-400 text-xs">/ {formatBRL(valorOrcado)}</span>
-          <span className={`text-xs w-20 text-right ${diferenca < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-            {diferenca >= 0 ? '+' : ''}{formatBRL(diferenca)}
-          </span>
+    <div className={`rounded-2xl px-4 py-3 ${grande ? (negativo ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white' : 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white') : 'bg-slate-50 border border-slate-100'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`font-semibold text-sm ${grande ? '' : 'text-slate-700'}`}>{label}</span>
+        <span className={`font-bold pf-num ${grande ? 'text-xl' : `text-base ${negativo ? 'text-rose-600' : 'text-emerald-700'}`}`}>{formatBRL(valor)}</span>
+      </div>
+      {mostrarOrcado && (
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <span className={`text-[11px] pf-num ${grande ? 'text-white/80' : 'text-slate-400'}`}>Orçado {formatBRL(valorOrcado)}</span>
+          {grande ? (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/20 text-white whitespace-nowrap">
+              {valor >= valorOrcado ? `${formatBRL(valor - valorOrcado)} acima` : `${formatBRL(valorOrcado - valor)} abaixo`}
+            </span>
+          ) : (
+            <DreChip realizado={valor} orcado={valorOrcado} maisEhMelhor />
+          )}
         </div>
-      ) : (
-        <span className={`font-semibold ${grande ? 'text-base' : 'text-sm'} ${valor < 0 ? 'text-red-500' : 'text-emerald-700'}`}>
-          {formatBRL(valor)}
-        </span>
       )}
+    </div>
+  );
+}
+
+// Cascata do resultado: receitas, despesas, lucro, entradas e pagamentos extras, lucro real.
+function DreCascata({ passos }) {
+  let acumulado = 0;
+  const barras = passos.map((p) => {
+    if (p.tipo === 'total') { acumulado = p.valor; return { ...p, de: 0, ate: p.valor }; }
+    const de = acumulado;
+    acumulado += p.tipo === 'mais' ? p.valor : -p.valor;
+    return { ...p, de, ate: acumulado };
+  });
+  const minV = Math.min(0, ...barras.map((b) => Math.min(b.de, b.ate)));
+  const maxV = Math.max(1, ...barras.map((b) => Math.max(b.de, b.ate)));
+  const H = 130;
+  const y = (v) => ((maxV - v) / (maxV - minV)) * H;
+  const cores = { total: '#0f766e', mais: '#10b981', menos: '#f43f5e' };
+  return (
+    <div className="overflow-x-auto pf-scroll">
+      <div className="min-w-[420px]">
+        <div className="relative" style={{ height: H + 18 }}>
+          <div className="absolute left-0 right-0 border-t border-dashed border-slate-200" style={{ top: y(0) + 16 }} />
+          <div className="absolute inset-0 flex gap-2" style={{ top: 16 }}>
+            {barras.map((b) => {
+              const topo = y(Math.max(b.de, b.ate));
+              const alt = Math.max(Math.abs(y(b.de) - y(b.ate)), 2);
+              const cor = b.tipo === 'total' && b.valor < 0 ? '#e11d48' : cores[b.tipo];
+              return (
+                <div key={b.label} className="flex-1 relative">
+                  <div className="absolute left-1 right-1 rounded-md" style={{ top: topo, height: alt, background: cor, opacity: b.tipo === 'total' ? 1 : 0.85 }} />
+                  <div className="absolute left-0 right-0 text-center text-[10px] font-semibold text-slate-600 pf-num" style={{ top: topo - 15 }}>
+                    {b.tipo === 'menos' ? '−' : b.tipo === 'mais' ? '+' : ''}{formatInt(b.tipo === 'total' ? b.valor : Math.abs(b.valor))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex gap-2 mt-1">
+          {barras.map((b) => <div key={b.label} className="flex-1 text-center text-[10px] text-slate-500 leading-tight">{b.label}</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Configuração do orçado, agrupada como na DRE.
+function DreConfigOrcado({ orcamentos, mk, onSetOrcamento, realizadoPorCategoria, mesLabel }) {
+  const agrupadas = new Set([...DRE_RECEITAS, ...DRE_DESPESAS, ...DRE_ENTRADAS_EXTRAS, ...DRE_PAGAMENTOS_EXTRAS]);
+  const outras = [...new Set([...CATEGORIAS_RECEBER, ...CATEGORIAS_PAGAR])].filter((c) => !agrupadas.has(c));
+  const grupos = [
+    { titulo: 'Receitas', cats: DRE_RECEITAS, cor: '#059669' },
+    { titulo: 'Despesas', cats: DRE_DESPESAS, cor: '#e11d48' },
+    { titulo: 'Entradas extras', cats: DRE_ENTRADAS_EXTRAS, cor: '#0d9488' },
+    { titulo: 'Pagamentos extras', cats: DRE_PAGAMENTOS_EXTRAS, cor: '#f59e0b' },
+    { titulo: 'Outras categorias', cats: outras, cor: '#94a3b8' },
+  ];
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Orçado de <b>{mesLabel}</b>. Digite o valor e saia do campo para salvar. Ao lado aparece o realizado do mês para referência.
+      </p>
+      {grupos.map((g) => {
+        const total = g.cats.reduce((s, c) => s + (Number(orcamentos?.[c]?.[mk]) || 0), 0);
+        return (
+          <div key={g.titulo} className="rounded-2xl border border-slate-100 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: g.cor }} />
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{g.titulo}</span>
+              </div>
+              <span className="text-xs font-semibold text-slate-600 pf-num">Total orçado {formatBRL(total)}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {g.cats.map((c) => (
+                <div key={c} className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-slate-700 truncate">{c}</div>
+                    <div className="text-[10px] text-slate-400 pf-num">realizado {formatBRL(realizadoPorCategoria[c] || 0)}</div>
+                  </div>
+                  <div className="relative shrink-0">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">R$</span>
+                    <input
+                      key={`${c}-${mk}`}
+                      type="number" min="0" step="0.01"
+                      defaultValue={orcamentos?.[c]?.[mk] ?? ''}
+                      onBlur={(e) => {
+                        const novo = Number(e.target.value) || 0;
+                        if (novo !== (Number(orcamentos?.[c]?.[mk]) || 0)) onSetOrcamento(c, mk, novo);
+                      }}
+                      placeholder="0,00"
+                      className="w-32 text-sm text-right border border-slate-200 bg-white rounded-lg pl-8 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -292,6 +516,37 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 const monthKey = (ano, mes) => `${ano}-${String(mes).padStart(2, '0')}`;
 
 const pad2 = (n) => String(n).padStart(2, '0');
+
+const formatInt = (v) => Math.round(Number(v) || 0).toLocaleString('pt-BR');
+
+// Guarda filtros e seleções da tela enquanto o app estiver aberto, para não perder ao trocar de aba.
+function usePersistentState(chave, inicial) {
+  const k = `pf:${chave}`;
+  const [valor, setValor] = useState(() => {
+    try {
+      const salvo = sessionStorage.getItem(k);
+      if (salvo != null) return JSON.parse(salvo);
+    } catch (e) { /* sem armazenamento disponível */ }
+    return typeof inicial === 'function' ? inicial() : inicial;
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(k, JSON.stringify(valor)); } catch (e) { /* sem armazenamento disponível */ }
+  }, [k, valor]);
+  return [valor, setValor];
+}
+
+// Normaliza a descrição de uma compra para reconhecer o mesmo estabelecimento em faturas diferentes.
+function normalizarDescricao(desc) {
+  return String(desc || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/parc(ela)?\.?\s*\d+\s*(\/|de)\s*\d+/g, ' ')
+    .replace(/\d+\s*\/\s*\d+/g, ' ')
+    .replace(/[0-9]/g, ' ')
+    .replace(/[^a-z ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function getStatus(t) {
   const today = todayStr();
@@ -394,8 +649,18 @@ function GlobalStyle() {
       @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
       .pf-root, .pf-root * { font-family: 'Poppins', sans-serif; }
       .pf-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
-      .pf-scroll::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 999px; }
+      .pf-scroll::-webkit-scrollbar-thumb { background: #a7f3d0; border-radius: 999px; }
       input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+      .pf-root { background:
+        radial-gradient(1200px 400px at 10% -10%, rgba(16,185,129,0.10), transparent 60%),
+        radial-gradient(900px 400px at 100% 0%, rgba(20,184,166,0.08), transparent 60%),
+        #f6faf8; }
+      .pf-card { box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 28px -16px rgba(6,78,59,0.18); }
+      .pf-root table thead tr { background: #f8fafc; }
+      .pf-root input:not([type="checkbox"]):not([type="range"]), .pf-root select { transition: border-color .15s, box-shadow .15s; }
+      .pf-num { font-variant-numeric: tabular-nums; }
+      @keyframes pfFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      .pf-fade { animation: pfFade .25s ease-out; }
     `}</style>
   );
 }
@@ -404,7 +669,7 @@ function GlobalStyle() {
 
 function Card({ children, className = '' }) {
   return (
-    <div className={`bg-white rounded-2xl border border-emerald-100 shadow-sm shadow-emerald-900/5 ${className}`}>
+    <div className={`pf-card bg-white rounded-2xl border border-slate-200/70 ${className}`}>
       {children}
     </div>
   );
@@ -424,12 +689,12 @@ function SectionTitle({ icon, title, subtitle, right }) {
     <div className="flex items-start justify-between gap-3 mb-4">
       <div className="flex items-center gap-2">
         {icon && (
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-            <Icon name={icon} size={18} />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shrink-0 shadow-sm shadow-emerald-600/30">
+            <Icon name={icon} size={17} />
           </div>
         )}
         <div>
-          <h3 className="text-[15px] font-semibold text-slate-800 leading-tight">{title}</h3>
+          <h3 className="text-[15px] font-semibold text-slate-800 leading-tight tracking-tight">{title}</h3>
           {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
         </div>
       </div>
@@ -455,14 +720,14 @@ function MonthYearPicker({ mes, ano, onChange }) {
     onChange(m, y);
   };
   return (
-    <div className="flex items-center gap-1 bg-emerald-50 rounded-xl p-1">
-      <button onClick={() => go(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white text-emerald-700 transition">
+    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+      <button onClick={() => go(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-emerald-50 text-emerald-700 transition">
         <Icon name="ChevronLeft" size={16} />
       </button>
-      <div className="px-2 text-sm font-medium text-emerald-800 min-w-[110px] text-center select-none">
+      <div className="px-2 text-sm font-semibold text-slate-700 min-w-[120px] text-center select-none">
         {MESES[mes - 1]} {ano}
       </div>
-      <button onClick={() => go(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white text-emerald-700 transition">
+      <button onClick={() => go(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-emerald-50 text-emerald-700 transition">
         <Icon name="ChevronRight" size={16} />
       </button>
     </div>
@@ -666,20 +931,182 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial }) 
 
 /* ------------------------------ Tabela de contas -------------------------- */
 
-function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQuitado, onDuplicate, onDelete }) {
+// Caixa flutuante posicionada na tela (não é cortada pela rolagem da tabela).
+function PopoverFixo({ anchorRef, open, onClose, children, largura = 240 }) {
+  const [pos, setPos] = useState(null);
+  useEffect(() => {
+    if (!open || !anchorRef.current) { setPos(null); return undefined; }
+    const r = anchorRef.current.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.left), window.innerWidth - largura - 8);
+    const abaixo = r.bottom + 6;
+    const cabe = window.innerHeight - abaixo > 220;
+    setPos(cabe ? { top: abaixo, left } : { bottom: window.innerHeight - r.top + 6, left });
+    const fechar = (e) => {
+      if (e.target.closest && e.target.closest('[data-pf-pop]')) return;
+      if (anchorRef.current && anchorRef.current.contains(e.target)) return;
+      onClose();
+    };
+    const rolar = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-pf-pop]')) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', fechar);
+    document.addEventListener('touchstart', fechar);
+    window.addEventListener('scroll', rolar, true);
+    return () => {
+      document.removeEventListener('mousedown', fechar);
+      document.removeEventListener('touchstart', fechar);
+      window.removeEventListener('scroll', rolar, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  if (!open || !pos) return null;
+  return ReactDOM.createPortal(
+    <div
+      data-pf-pop
+      style={{ position: 'fixed', ...pos, width: largura, zIndex: 60 }}
+      className="bg-white border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 p-2 pf-fade text-left normal-case tracking-normal"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+// Cabeçalho com menu: ordenar (A–Z, maior–menor, data) e filtrar pelos valores da coluna.
+function CabecalhoColuna({ label, coluna, tipoDado, ordem, onOrdenar, valores, selecionados, onFiltrar, extra, className = '' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const ativoOrdem = ordem.col === coluna;
+  const ativoFiltro = (selecionados && selecionados.length > 0) || !!extra?.ativo;
+  const opcoes = tipoDado === 'num'
+    ? [['asc', 'Menor → maior'], ['desc', 'Maior → menor']]
+    : tipoDado === 'data'
+      ? [['asc', 'Mais antiga primeiro'], ['desc', 'Mais recente primeiro']]
+      : [['asc', 'A → Z'], ['desc', 'Z → A']];
+  const toggle = (v) => {
+    if (selecionados.includes(v)) onFiltrar(selecionados.filter((x) => x !== v));
+    else onFiltrar([...selecionados, v]);
+  };
+  return (
+    <th className={`px-2 py-2 font-medium ${className}`}>
+      <button
+        ref={ref}
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide rounded-md px-1 -mx-1 py-0.5 hover:bg-slate-200/60 transition ${ativoOrdem || ativoFiltro ? 'text-emerald-700' : ''}`}
+      >
+        {label}
+        {ativoOrdem && <span className="text-[10px]">{ordem.dir === 'asc' ? '▲' : '▼'}</span>}
+        {ativoFiltro && <Icon name="Filter" size={10} />}
+        {!ativoOrdem && !ativoFiltro && <Icon name="ChevronDown" size={11} className="opacity-50" />}
+      </button>
+      <PopoverFixo anchorRef={ref} open={open} onClose={() => setOpen(false)} largura={230}>
+        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 pt-1 pb-1">Ordenar</div>
+        {opcoes.map(([dir, txt]) => (
+          <button
+            key={dir}
+            onClick={() => { onOrdenar({ col: coluna, dir }); setOpen(false); }}
+            className={`w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-emerald-50 ${ativoOrdem && ordem.dir === dir ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}
+          >
+            {txt}
+          </button>
+        ))}
+        {extra && <div className="border-t border-slate-100 mt-1 pt-1">{extra.conteudo}</div>}
+        {valores && valores.length > 0 && (
+          <div className="border-t border-slate-100 mt-1 pt-1">
+            <div className="flex items-center justify-between px-2 pt-1 pb-1">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Filtrar</span>
+              {selecionados.length > 0 && <button onClick={() => onFiltrar([])} className="text-[11px] text-emerald-600 font-medium">Limpar</button>}
+            </div>
+            <div className="max-h-52 overflow-y-auto pf-scroll">
+              {valores.map((v) => (
+                <label key={v} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-emerald-50 cursor-pointer text-xs text-slate-700">
+                  <input type="checkbox" checked={selecionados.includes(v)} onChange={() => toggle(v)} className="accent-emerald-600 w-3.5 h-3.5" />
+                  <span className="truncate">{v}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </PopoverFixo>
+    </th>
+  );
+}
+
+// Lançamentos do cartão que formam um lançamento agrupado em Contas a Pagar.
+function itensDoGrupoCartao(t, cartaoTransacoes) {
+  let mk = null; let categoria = null;
+  if (t.grupoCartao) { mk = t.grupoCartao.mk; categoria = t.grupoCartao.categoria; }
+  else {
+    const m = /^Cartão - (.+)$/.exec(t.descricao || '');
+    if (m && t.tipo === 'pagar') { mk = t.data.slice(0, 7); categoria = m[1]; }
+  }
+  if (!mk) return null;
+  return (cartaoTransacoes || [])
+    .filter((c) => (c.mesFatura || c.data.slice(0, 7)) === mk && c.categoria === categoria)
+    .sort((a, b) => a.data.localeCompare(b.data));
+}
+
+function GrupoCartaoInfo({ itens }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const total = itens.reduce((s, c) => s + c.valor, 0);
+  return (
+    <>
+      <button
+        ref={ref}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-0.5 ml-1.5 align-middle text-[10px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full px-1.5 py-0.5"
+      >
+        <Icon name="CreditCard" size={10} /> {itens.length}
+      </button>
+      <PopoverFixo anchorRef={ref} open={open} onClose={() => setOpen(false)} largura={300}>
+        <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b border-slate-100">
+          <span className="text-xs font-semibold text-slate-700">{itens.length} compra{itens.length !== 1 ? 's' : ''} do cartão</span>
+          <span className="text-xs font-semibold text-rose-500 pf-num">{formatBRL(total)}</span>
+        </div>
+        {itens.length === 0 ? (
+          <div className="text-xs text-slate-400 px-1 py-2">Nenhuma compra do cartão encontrada para esse mês e categoria.</div>
+        ) : (
+          <div className="max-h-64 overflow-y-auto pf-scroll space-y-0.5">
+            {itens.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 text-[11px] px-1 py-1 rounded hover:bg-slate-50">
+                <span className="text-slate-400 shrink-0 pf-num">{formatDateBR(c.data).slice(0, 5)}</span>
+                <span className="text-slate-600 truncate flex-1">{c.descricao}</span>
+                <span className="text-slate-700 font-medium pf-num shrink-0">{formatBRL(c.valor)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </PopoverFixo>
+    </>
+  );
+}
+
+function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, onEdit, onToggleQuitado, onDuplicate, onDelete }) {
   const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [ano, setAno] = useState(now.getFullYear());
-  const [modoFiltro, setModoFiltro] = useState('mes'); // mes | periodo
-  const [dataInicio, setDataInicio] = useState(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`);
-  const [dataFim, setDataFim] = useState(todayStr());
-  const [categoriasSel, setCategoriasSel] = useState([]);
-  const [statusFiltro, setStatusFiltro] = useState('todos'); // todos | quitado | pendente
-  const [busca, setBusca] = useState('');
+  const p = `contas:${tipo}`;
+  const [mes, setMes] = usePersistentState(`${p}:mes`, now.getMonth() + 1);
+  const [ano, setAno] = usePersistentState(`${p}:ano`, now.getFullYear());
+  const [modoFiltro, setModoFiltro] = usePersistentState(`${p}:modo`, 'mes'); // mes | periodo
+  const [dataInicio, setDataInicio] = usePersistentState(`${p}:ini`, `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`);
+  const [dataFim, setDataFim] = usePersistentState(`${p}:fim`, todayStr());
+  const [categoriasSel, setCategoriasSel] = usePersistentState(`${p}:cats`, []);
+  const [statusFiltro, setStatusFiltro] = usePersistentState(`${p}:status`, 'todos'); // todos | quitado | pendente
+  const [busca, setBusca] = usePersistentState(`${p}:busca`, '');
+  const [ordem, setOrdem] = usePersistentState(`${p}:ordem`, { col: 'data', dir: 'asc' });
+  const [filtroStatusCol, setFiltroStatusCol] = usePersistentState(`${p}:fStatus`, []);
+  const [filtroQuitadoCol, setFiltroQuitadoCol] = usePersistentState(`${p}:fQuitado`, []);
+  const [valorMin, setValorMin] = usePersistentState(`${p}:vMin`, '');
+  const [valorMax, setValorMax] = usePersistentState(`${p}:vMax`, '');
+  const [selecionados, setSelecionados] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
   const mk = monthKey(ano, mes);
+  const rotuloQuitado = tipo === 'pagar' ? ['Pago', 'Não pago'] : ['Recebido', 'Não recebido'];
 
   const doTipo = useMemo(
     () => lancamentos.filter((t) => t.tipo === tipo),
@@ -704,8 +1131,26 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
       const termo = busca.trim().toLowerCase();
       list = list.filter((t) => t.descricao.toLowerCase().includes(termo));
     }
-    return [...list].sort((a, b) => a.data.localeCompare(b.data));
-  }, [doMes, categoriasSel, statusFiltro, busca]);
+    if (filtroStatusCol.length > 0) list = list.filter((t) => filtroStatusCol.includes(getStatus(t)));
+    if (filtroQuitadoCol.length > 0) list = list.filter((t) => filtroQuitadoCol.includes(t.quitado ? rotuloQuitado[0] : rotuloQuitado[1]));
+    if (valorMin !== '') list = list.filter((t) => t.valor >= Number(valorMin));
+    if (valorMax !== '') list = list.filter((t) => t.valor <= Number(valorMax));
+    const chave = {
+      data: (t) => t.data,
+      descricao: (t) => (t.descricao || '').toLowerCase(),
+      categoria: (t) => (t.categoria || '').toLowerCase(),
+      valor: (t) => t.valor,
+      status: (t) => getStatus(t),
+      quitado: (t) => (t.quitado ? 1 : 0),
+    }[ordem.col] || ((t) => t.data);
+    const sinal = ordem.dir === 'desc' ? -1 : 1;
+    return [...list].sort((a, b) => {
+      const va = chave(a); const vb = chave(b);
+      const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR');
+      return c * sinal || a.data.localeCompare(b.data);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doMes, categoriasSel, statusFiltro, busca, filtroStatusCol, filtroQuitadoCol, valorMin, valorMax, ordem]);
 
   const resumoFiltro = useMemo(() => {
     const map = {};
@@ -736,6 +1181,17 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
 
   const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
 
+  // Seleção de linhas (só conta o que está visível com os filtros atuais)
+  const selVisiveis = filtrados.filter((t) => selecionados.includes(t.id));
+  const somaSel = selVisiveis.reduce((s, t) => s + t.valor, 0);
+  const somaSelQuitado = selVisiveis.filter((t) => t.quitado).reduce((s, t) => s + t.valor, 0);
+  const todosSelecionados = filtrados.length > 0 && selVisiveis.length === filtrados.length;
+  const toggleSel = (id) => setSelecionados((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggleTodos = () => setSelecionados(todosSelecionados ? [] : filtrados.map((t) => t.id));
+
+  const filtrosColunaAtivos = filtroStatusCol.length + filtroQuitadoCol.length + (valorMin !== '' ? 1 : 0) + (valorMax !== '' ? 1 : 0);
+  const limparFiltrosColuna = () => { setFiltroStatusCol([]); setFiltroQuitadoCol([]); setValorMin(''); setValorMax(''); };
+
   const openNew = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (t) => { setEditing(t); setModalOpen(true); };
 
@@ -758,16 +1214,18 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
   };
 
   const corValor = tipo === 'pagar' ? 'text-red-500' : 'text-emerald-600';
+  const statusValores = tipo === 'pagar' ? ['Pago', 'A pagar', 'Em atraso'] : ['Recebido', 'A receber', 'Em atraso'];
+  const colProps = { ordem, onOrdenar: setOrdem };
 
   return (
     <div className="pb-24">
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+        <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
           {[{ v: 'mes', l: 'Mês' }, { v: 'periodo', l: 'Período' }].map((op) => (
             <button
               key={op.v}
               onClick={() => setModoFiltro(op.v)}
-              className={`px-3 py-1.5 rounded-lg transition ${modoFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              className={`px-3 py-1.5 rounded-lg transition ${modoFiltro === op.v ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
             >
               {op.l}
             </button>
@@ -796,7 +1254,7 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+        <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
           {[
             { v: 'todos', l: 'Todos' },
             { v: 'quitado', l: tipo === 'pagar' ? 'Pago' : 'Recebido' },
@@ -805,7 +1263,7 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
             <button
               key={op.v}
               onClick={() => setStatusFiltro(op.v)}
-              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
             >
               {op.l}
             </button>
@@ -817,7 +1275,7 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por descrição..."
-            className="w-full text-sm border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            className="w-full text-sm bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
           />
         </div>
       </div>
@@ -830,15 +1288,18 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
         />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {previsaoOrdenada.map((l) => (
-            <div key={l.categoria} className="bg-emerald-50/60 rounded-xl px-3 py-2">
+            <div key={l.categoria} className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
               <div className="text-[11px] text-slate-500 truncate">{l.categoria}</div>
-              <div className="text-sm font-semibold text-slate-700">{formatBRL(l.valor)}</div>
+              <div className="text-sm font-semibold text-slate-700 pf-num">{formatBRL(l.valor)}</div>
+              <div className="h-1 bg-slate-200/70 rounded-full mt-1.5 overflow-hidden">
+                <div className={`h-full rounded-full ${tipo === 'pagar' ? 'bg-rose-400' : 'bg-emerald-500'}`} style={{ width: `${totalMes ? (l.valor / totalMes) * 100 : 0}%` }} />
+              </div>
             </div>
           ))}
         </div>
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-emerald-100">
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
           <span className="text-sm font-medium text-slate-500">Total do período</span>
-          <span className={`text-lg font-semibold ${corValor}`}>{formatBRL(totalMes)}</span>
+          <span className={`text-lg font-semibold pf-num ${corValor}`}>{formatBRL(totalMes)}</span>
         </div>
       </Card>
 
@@ -846,20 +1307,30 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
         <Card className="p-4 mb-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700">Total do filtro</span>
-            <span className={`text-lg font-semibold ${corValor}`}>{formatBRL(resumoFiltro.reduce((s, r) => s + r.total, 0))}</span>
+            <span className={`text-lg font-semibold pf-num ${corValor}`}>{formatBRL(resumoFiltro.reduce((s, r) => s + r.total, 0))}</span>
           </div>
         </Card>
       )}
 
       <Card className="overflow-hidden">
-        <div className="p-4 pb-0 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">Lançamentos</h3>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition"
-          >
-            <Icon name="Plus" size={14} /> Novo
-          </button>
+        <div className="p-4 pb-0 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Lançamentos</h3>
+            <p className="text-[11px] text-slate-400">Toque no título de uma coluna para ordenar ou filtrar</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {filtrosColunaAtivos > 0 && (
+              <button onClick={limparFiltrosColuna} className="text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg">
+                Limpar filtros de coluna ({filtrosColunaAtivos})
+              </button>
+            )}
+            <button
+              onClick={openNew}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition"
+            >
+              <Icon name="Plus" size={14} /> Novo
+            </button>
+          </div>
         </div>
 
         {filtrados.length === 0 ? (
@@ -869,21 +1340,54 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
-                  <th className="px-4 py-2 font-medium">Quitado</th>
-                  <th className="px-2 py-2 font-medium">Data</th>
-                  <th className="px-2 py-2 font-medium">Descrição</th>
-                  <th className="px-2 py-2 font-medium hidden sm:table-cell">Categoria</th>
-                  <th className="px-2 py-2 font-medium text-right">Valor</th>
-                  <th className="px-2 py-2 font-medium">Status</th>
+                  <th className="pl-4 pr-1 py-2 w-8">
+                    <input type="checkbox" checked={todosSelecionados} onChange={toggleTodos} title="Selecionar todos" className="accent-emerald-600 w-4 h-4 align-middle" />
+                  </th>
+                  <CabecalhoColuna {...colProps} label="Quitado" coluna="quitado" tipoDado="texto" valores={rotuloQuitado} selecionados={filtroQuitadoCol} onFiltrar={setFiltroQuitadoCol} className="pl-1" />
+                  <CabecalhoColuna {...colProps} label="Data" coluna="data" tipoDado="data" />
+                  <CabecalhoColuna
+                    {...colProps} label="Descrição" coluna="descricao" tipoDado="texto"
+                    extra={{
+                      ativo: busca.trim() !== '',
+                      conteudo: (
+                        <div className="px-2 py-1">
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Contém</div>
+                          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite parte da descrição" className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+                        </div>
+                      ),
+                    }}
+                  />
+                  <CabecalhoColuna {...colProps} label="Categoria" coluna="categoria" tipoDado="texto" valores={categorias} selecionados={categoriasSel} onFiltrar={setCategoriasSel} className="hidden sm:table-cell" />
+                  <CabecalhoColuna
+                    {...colProps} label="Valor" coluna="valor" tipoDado="num" className="text-right"
+                    extra={{
+                      ativo: valorMin !== '' || valorMax !== '',
+                      conteudo: (
+                        <div className="px-2 py-1">
+                          <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Valor entre</div>
+                          <div className="flex items-center gap-1.5">
+                            <input type="number" value={valorMin} onChange={(e) => setValorMin(e.target.value)} placeholder="mín." className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+                            <input type="number" value={valorMax} onChange={(e) => setValorMax(e.target.value)} placeholder="máx." className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5" />
+                          </div>
+                        </div>
+                      ),
+                    }}
+                  />
+                  <CabecalhoColuna {...colProps} label="Status" coluna="status" tipoDado="texto" valores={statusValores} selecionados={filtroStatusCol} onFiltrar={setFiltroStatusCol} />
                   <th className="px-2 py-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {filtrados.map((t) => {
                   const status = getStatus(t);
+                  const sel = selecionados.includes(t.id);
+                  const grupo = tipo === 'pagar' ? itensDoGrupoCartao(t, cartaoTransacoes) : null;
                   return (
-                    <tr key={t.id} className="border-b border-slate-50 hover:bg-emerald-50/30 transition">
-                      <td className="px-4 py-2.5">
+                    <tr key={t.id} className={`border-b border-slate-50 transition ${sel ? 'bg-emerald-50/70' : 'hover:bg-emerald-50/30'}`}>
+                      <td className="pl-4 pr-1 py-2.5">
+                        <input type="checkbox" checked={sel} onChange={() => toggleSel(t.id)} className="accent-emerald-600 w-4 h-4 align-middle" />
+                      </td>
+                      <td className="pl-1 pr-2 py-2.5">
                         <button
                           onClick={() => onToggleQuitado(t)}
                           className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${t.quitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
@@ -891,10 +1395,15 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
                           <Icon name="Check" size={14} />
                         </button>
                       </td>
-                      <td className="px-2 py-2.5 whitespace-nowrap text-slate-500">{formatDateBR(t.data)}</td>
-                      <td className="px-2 py-2.5 text-slate-700 max-w-[160px] truncate">{t.descricao}</td>
+                      <td className="px-2 py-2.5 whitespace-nowrap text-slate-500 pf-num">{formatDateBR(t.data)}</td>
+                      <td className="px-2 py-2.5 text-slate-700 max-w-[200px]">
+                        <div className="flex items-center min-w-0">
+                          <span className="truncate">{t.descricao}</span>
+                          {grupo && <GrupoCartaoInfo itens={grupo} />}
+                        </div>
+                      </td>
                       <td className="px-2 py-2.5 hidden sm:table-cell text-slate-500">{t.categoria}</td>
-                      <td className={`px-2 py-2.5 text-right font-medium whitespace-nowrap ${corValor}`}>{formatBRL(t.valor)}</td>
+                      <td className={`px-2 py-2.5 text-right font-medium whitespace-nowrap pf-num ${corValor}`}>{formatBRL(t.valor)}</td>
                       <td className="px-2 py-2.5"><Badge status={status} /></td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center justify-end gap-1">
@@ -918,6 +1427,23 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
         )}
       </Card>
 
+      {selVisiveis.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 w-[calc(100%-2rem)] max-w-xl pf-fade">
+          <div className="flex items-center justify-between gap-3 bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-2xl shadow-slate-900/30">
+            <div className="min-w-0">
+              <div className="text-[11px] text-slate-300">{selVisiveis.length} selecionado{selVisiveis.length !== 1 ? 's' : ''}</div>
+              <div className="text-lg font-semibold pf-num leading-tight">{formatBRL(somaSel)}</div>
+              <div className="text-[10px] text-slate-400 pf-num">
+                {rotuloQuitado[0].toLowerCase()} {formatBRL(somaSelQuitado)} · em aberto {formatBRL(somaSel - somaSelQuitado)}
+              </div>
+            </div>
+            <button onClick={() => setSelecionados([])} className="shrink-0 text-xs font-medium bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl">
+              Limpar seleção
+            </button>
+          </div>
+        </div>
+      )}
+
       <TransactionModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -934,11 +1460,12 @@ function ContasTable({ tipo, categorias, lancamentos, onAdd, onEdit, onToggleQui
 
 function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSaldoInicial }) {
   const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [ano, setAno] = useState(now.getFullYear());
-  const [statusFiltro, setStatusFiltro] = useState('todos'); // todos | quitado | pendente
-  const [fluxoFiltro, setFluxoFiltro] = useState('tudo'); // tudo | quitado | aquitar
-  const [modoDre, setModoDre] = useState('realizado'); // realizado | orcado
+  const [mes, setMes] = usePersistentState('dash:mes', now.getMonth() + 1);
+  const [ano, setAno] = usePersistentState('dash:ano', now.getFullYear());
+  const [statusFiltro, setStatusFiltro] = usePersistentState('dash:status', 'todos'); // todos | quitado | pendente
+  const [fluxoFiltro, setFluxoFiltro] = usePersistentState('dash:fluxo', 'tudo'); // tudo | quitado | aquitar
+  const [modoDre, setModoDre] = usePersistentState('dash:modoDre', 'realizado'); // realizado | orcado | config
+  const [catsAnalise, setCatsAnalise] = usePersistentState('dash:catsAnalise', []);
 
   const mk = monthKey(ano, mes);
 
@@ -953,12 +1480,6 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
   const totalReceber = doMes.filter((t) => t.tipo === 'receber' && passaFiltroStatus(t)).reduce((s, t) => s + t.valor, 0);
   const totalPagar = doMes.filter((t) => t.tipo === 'pagar' && passaFiltroStatus(t)).reduce((s, t) => s + t.valor, 0);
   const saldoPeriodo = totalReceber - totalPagar;
-
-  // Todas as categorias (usadas no editor de orçamentos)
-  const todasCategorias = [
-    ...CATEGORIAS_RECEBER.map((c) => ({ categoria: c, tipo: 'receber' })),
-    ...CATEGORIAS_PAGAR.map((c) => ({ categoria: c, tipo: 'pagar' })),
-  ];
 
   // DRE: cada linha traz realizado (respeitando o filtro de status), orçado e a diferença
   const linhasDreReceitas = construirLinhasDre(DRE_RECEITAS, 'receber', doMes, passaFiltroStatus, orcamentos, mk);
@@ -979,6 +1500,47 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
   const dreEntradasExtrasOrc = linhasDreEntradasExtras.reduce((s, l) => s + l.orcado, 0);
   const drePagamentosExtrasOrc = linhasDrePagamentosExtras.reduce((s, l) => s + l.orcado, 0);
   const dreLucroRealOrc = dreLucroOrc + dreEntradasExtrasOrc - drePagamentosExtrasOrc;
+
+  const realizadoPorCategoria = useMemo(() => {
+    const map = {};
+    doMes.filter(passaFiltroStatus).forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doMes, statusFiltro]);
+
+  // Gráfico do ano: receita, despesa e saldo por mês (respeita o filtro de status)
+  const dadosAno = useMemo(() => MESES.map((nome, i) => {
+    const k = monthKey(ano, i + 1);
+    const doM = lancamentos.filter((t) => t.data.slice(0, 7) === k && passaFiltroStatus(t));
+    const receita = doM.filter((t) => t.tipo === 'receber').reduce((s, t) => s + t.valor, 0);
+    const despesa = doM.filter((t) => t.tipo === 'pagar').reduce((s, t) => s + t.valor, 0);
+    return { mes: nome.slice(0, 3), receita, despesa, saldo: receita - despesa };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [lancamentos, ano, statusFiltro]);
+  const totalAnoReceita = dadosAno.reduce((s, d) => s + d.receita, 0);
+  const totalAnoDespesa = dadosAno.reduce((s, d) => s + d.despesa, 0);
+
+  // Análise por categoria no ano
+  const todasCategoriasUnicas = useMemo(() => [...new Set([...CATEGORIAS_PAGAR, ...CATEGORIAS_RECEBER])], []);
+  const CORES_ANALISE = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#f43f5e', '#14b8a6', '#64748b', '#ec4899'];
+  const analise = useMemo(() => {
+    const doAno = lancamentos.filter((t) => t.data.slice(0, 4) === String(ano) && catsAnalise.includes(t.categoria) && passaFiltroStatus(t));
+    const porCat = catsAnalise.map((c) => {
+      const lista = doAno.filter((t) => t.categoria === c);
+      const total = lista.reduce((s, t) => s + t.valor, 0);
+      const quitado = lista.filter((t) => t.quitado).reduce((s, t) => s + t.valor, 0);
+      const mesesComValor = new Set(lista.map((t) => t.data.slice(0, 7))).size;
+      return { categoria: c, total, quitado, pendente: total - quitado, media: mesesComValor ? total / mesesComValor : 0 };
+    });
+    const porMes = MESES.map((nome, i) => {
+      const k = monthKey(ano, i + 1);
+      const row = { mes: nome.slice(0, 3) };
+      catsAnalise.forEach((c) => { row[c] = doAno.filter((t) => t.categoria === c && t.data.slice(0, 7) === k).reduce((s, t) => s + t.valor, 0); });
+      return row;
+    });
+    return { porCat, porMes, total: porCat.reduce((s, c) => s + c.total, 0) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lancamentos, ano, catsAnalise, statusFiltro]);
 
   // Top fornecedores (despesas por descrição)
   const porFornecedor = useMemo(() => {
@@ -1018,11 +1580,27 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doMes, diasNoMes, ano, mes, saldoInicial, fluxoFiltro]);
 
+  const rotuloStatus = { todos: 'tudo', quitado: 'só pago/recebido', pendente: 'só a pagar/receber' }[statusFiltro];
+
   return (
     <div className="pb-24 space-y-4">
+      {/* Título */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 text-white px-5 py-6 sm:px-7 sm:py-7 shadow-lg shadow-emerald-900/20">
+        <div className="absolute -right-10 -top-12 w-44 h-44 rounded-full bg-white/10" />
+        <div className="absolute right-16 -bottom-16 w-36 h-36 rounded-full bg-white/5" />
+        <div className="relative">
+          <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-100/90 font-medium">Painel da família</div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mt-1">Finanças Alves de Sousa</h2>
+          <p className="mt-3 text-sm sm:text-[15px] text-emerald-50/95 italic max-w-xl leading-relaxed">
+            “Na sua casa há prosperidade e riqueza, e a sua justiça permanece para sempre.”
+          </p>
+          <p className="text-xs text-emerald-100/80 mt-1 font-medium">Salmos 112:3</p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
-        <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium">
+        <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
           {[
             { v: 'todos', l: 'Tudo' },
             { v: 'quitado', l: 'Pago/Recebido' },
@@ -1031,7 +1609,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
             <button
               key={op.v}
               onClick={() => setStatusFiltro(op.v)}
-              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-emerald-700'}`}
             >
               {op.l}
             </button>
@@ -1041,52 +1619,157 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
 
       {/* Cards resumo */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="p-4">
+        <Card className="p-4 border-l-4 border-l-emerald-500">
           <div className="flex items-center gap-2 text-emerald-600 text-xs font-medium mb-1">
             <Icon name="ArrowDownCircle" size={14} /> Receitas
           </div>
-          <div className="text-xl font-semibold text-slate-800">{formatBRL(totalReceber)}</div>
+          <div className="text-xl font-semibold text-slate-800 pf-num">{formatBRL(totalReceber)}</div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-red-500 text-xs font-medium mb-1">
+        <Card className="p-4 border-l-4 border-l-rose-500">
+          <div className="flex items-center gap-2 text-rose-500 text-xs font-medium mb-1">
             <Icon name="ArrowUpCircle" size={14} /> Despesas
           </div>
-          <div className="text-xl font-semibold text-slate-800">{formatBRL(totalPagar)}</div>
+          <div className="text-xl font-semibold text-slate-800 pf-num">{formatBRL(totalPagar)}</div>
         </Card>
-        <Card className="p-4">
+        <Card className={`p-4 border-l-4 ${saldoPeriodo < 0 ? 'border-l-rose-500' : 'border-l-teal-500'}`}>
           <div className="flex items-center gap-2 text-slate-500 text-xs font-medium mb-1">
             <Icon name="Wallet" size={14} /> Saldo do período
           </div>
-          <div className={`text-xl font-semibold ${saldoPeriodo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+          <div className={`text-xl font-semibold pf-num ${saldoPeriodo < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
             {formatBRL(saldoPeriodo)}
           </div>
         </Card>
       </div>
 
+      {/* Gráfico do ano */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle
+          icon="TrendingUp"
+          title={`Receita, despesa e saldo em ${ano}`}
+          subtitle={`Mês a mês · filtro: ${rotuloStatus}`}
+          right={(
+            <div className="text-right text-[11px] leading-tight shrink-0">
+              <div className="text-emerald-600 font-semibold pf-num">+{formatInt(totalAnoReceita)}</div>
+              <div className="text-rose-500 font-semibold pf-num">−{formatInt(totalAnoDespesa)}</div>
+              <div className={`font-bold pf-num ${totalAnoReceita - totalAnoDespesa < 0 ? 'text-rose-600' : 'text-slate-700'}`}>= {formatInt(totalAnoReceita - totalAnoDespesa)}</div>
+            </div>
+          )}
+        />
+        <GraficoAnual dados={dadosAno} mesDestaque={mes} />
+      </Card>
+
       {/* DRE */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <SectionTitle icon="FileSpreadsheet" title="DRE" subtitle="Demonstrativo do resultado do mês" right={null} />
-          <div className="flex bg-emerald-50 rounded-xl p-1 text-xs font-medium shrink-0">
-            {[{ v: 'realizado', l: 'Realizado' }, { v: 'orcado', l: 'Orçado x Realizado' }].map((op) => (
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+          <SectionTitle icon="FileSpreadsheet" title="DRE" subtitle={`Resultado de ${MESES[mes - 1]} ${ano}`} right={null} />
+          <div className="flex bg-slate-100 rounded-xl p-1 text-xs font-medium shrink-0">
+            {[
+              { v: 'realizado', l: 'Realizado' },
+              { v: 'orcado', l: 'Orçado x Realizado' },
+              { v: 'config', l: 'Configurar orçado', icon: 'Pencil' },
+            ].map((op) => (
               <button
                 key={op.v}
                 onClick={() => setModoDre(op.v)}
-                className={`px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${modoDre === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${modoDre === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {op.l}
+                {op.icon && <Icon name={op.icon} size={12} />}{op.l}
               </button>
             ))}
           </div>
         </div>
-        <div className="space-y-4 mt-3">
-          <DreSecao titulo="Receitas" linhas={linhasDreReceitas} cor="text-emerald-600" modo={modoDre} />
-          <DreSecao titulo="Despesas" linhas={linhasDreDespesas} cor="text-red-500" modo={modoDre} />
-          <DreLinha label="Lucro" valor={dreLucro} valorOrcado={dreLucroOrc} modo={modoDre} />
-          <DreSecao titulo="Entradas Extras" linhas={linhasDreEntradasExtras} cor="text-emerald-600" modo={modoDre} />
-          <DreSecao titulo="Pagamentos Extras" linhas={linhasDrePagamentosExtras} cor="text-red-500" modo={modoDre} />
-          <DreLinha label="Lucro real" valor={dreLucroReal} valorOrcado={dreLucroRealOrc} modo={modoDre} grande />
-        </div>
+        {modoDre === 'config' ? (
+          <div className="mt-3 pf-fade">
+            <DreConfigOrcado
+              orcamentos={orcamentos}
+              mk={mk}
+              onSetOrcamento={onSetOrcamento}
+              realizadoPorCategoria={realizadoPorCategoria}
+              mesLabel={`${MESES[mes - 1]} ${ano}`}
+            />
+          </div>
+        ) : (
+          <div className="space-y-3 mt-3 pf-fade">
+            {modoDre === 'realizado' && (
+              <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                <DreCascata passos={[
+                  { label: 'Receitas', valor: dreReceitas, tipo: 'total' },
+                  { label: 'Despesas', valor: dreDespesas, tipo: 'menos' },
+                  { label: 'Lucro', valor: dreLucro, tipo: 'total' },
+                  { label: 'Entradas extras', valor: dreEntradasExtras, tipo: 'mais' },
+                  { label: 'Pagamentos extras', valor: drePagamentosExtras, tipo: 'menos' },
+                  { label: 'Lucro real', valor: dreLucroReal, tipo: 'total' },
+                ]} />
+              </div>
+            )}
+            {modoDre === 'orcado' && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 px-1">
+                <span className="flex items-center gap-1.5"><span className="w-4 h-2 rounded-full bg-emerald-500" /> realizado</span>
+                <span className="flex items-center gap-1.5"><span className="w-[3px] h-3 rounded bg-slate-700" /> orçado</span>
+                <span className="flex items-center gap-1.5"><span className="w-4 h-2 rounded-full bg-rose-500" /> fora do esperado</span>
+              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <DreSecao titulo="Receitas" linhas={linhasDreReceitas} cor="#059669" modo={modoDre} maisEhMelhor />
+              <DreSecao titulo="Despesas" linhas={linhasDreDespesas} cor="#e11d48" modo={modoDre} maisEhMelhor={false} />
+            </div>
+            <DreLinha label="Lucro" valor={dreLucro} valorOrcado={dreLucroOrc} modo={modoDre} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <DreSecao titulo="Entradas Extras" linhas={linhasDreEntradasExtras} cor="#0d9488" modo={modoDre} maisEhMelhor />
+              <DreSecao titulo="Pagamentos Extras" linhas={linhasDrePagamentosExtras} cor="#f59e0b" modo={modoDre} maisEhMelhor={false} />
+            </div>
+            <DreLinha label="Lucro real" valor={dreLucroReal} valorOrcado={dreLucroRealOrc} modo={modoDre} grande />
+          </div>
+        )}
+      </Card>
+
+      {/* Análise por categoria */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle
+          icon="Target"
+          title={`Análise por categoria em ${ano}`}
+          subtitle={`Quanto já foi no ano · filtro: ${rotuloStatus}`}
+          right={<CategoryMultiSelect categorias={todasCategoriasUnicas} selected={catsAnalise} onChange={setCatsAnalise} />}
+        />
+        {catsAnalise.length === 0 ? (
+          <EmptyState text="Selecione uma ou mais categorias para ver o total do ano." />
+        ) : (
+          <div className="pf-fade">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+              {analise.porCat.map((c, i) => (
+                <div key={c.categoria} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 truncate">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: CORES_ANALISE[i % CORES_ANALISE.length] }} />
+                      {c.categoria}
+                    </span>
+                    <span className="text-base font-semibold text-slate-800 pf-num">{formatBRL(c.total)}</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-200/70 rounded-full overflow-hidden mt-2 flex">
+                    <div style={{ width: `${c.total ? (c.quitado / c.total) * 100 : 0}%`, background: CORES_ANALISE[i % CORES_ANALISE.length] }} />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-1 pf-num">
+                    <span>quitado {formatBRL(c.quitado)} · em aberto {formatBRL(c.pendente)}</span>
+                    <span>média {formatBRL(c.media)}/mês</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {catsAnalise.length > 1 && (
+              <div className="flex items-center justify-between text-sm mb-3 px-1">
+                <span className="text-slate-500">Total das categorias selecionadas</span>
+                <span className="font-semibold text-slate-800 pf-num">{formatBRL(analise.total)}</span>
+              </div>
+            )}
+            <ColumnChart
+              data={analise.porMes}
+              seriesKeys={catsAnalise}
+              seriesColors={Object.fromEntries(catsAnalise.map((c, i) => [c, CORES_ANALISE[i % CORES_ANALISE.length]]))}
+              stacked
+              height={180}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Fornecedores */}
@@ -1097,30 +1780,6 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
         )}
       </Card>
 
-      {/* Orçamentos por categoria */}
-      <Card className="p-4">
-        <SectionTitle icon="LayoutDashboard" title="Orçamentos por categoria" subtitle="Usados na DRE para comparar com o realizado" />
-        <details className="group" open>
-          <summary className="text-xs font-medium text-emerald-600 cursor-pointer select-none list-none flex items-center gap-1">
-            <Icon name="ChevronDown" size={13} className="transition group-open:rotate-180" /> Editar orçamentos por categoria
-          </summary>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pf-scroll pr-1">
-            {todasCategorias.map(({ categoria }) => (
-              <div key={categoria} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5">
-                <span className="text-xs text-slate-500 truncate">{categoria}</span>
-                <input
-                  type="number" min="0" step="0.01"
-                  defaultValue={orcamentos?.[categoria]?.[mk] ?? ''}
-                  onBlur={(e) => onSetOrcamento(categoria, mk, Number(e.target.value) || 0)}
-                  placeholder="0,00"
-                  className="w-24 text-xs text-right border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-300"
-                />
-              </div>
-            ))}
-          </div>
-        </details>
-      </Card>
-
       {/* Fluxo de caixa */}
       <Card className="p-4">
         <SectionTitle icon="Wallet" title="Fluxo de caixa diário" subtitle={`${MESES[mes - 1]} ${ano}`} />
@@ -1129,6 +1788,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
           <div className="flex items-center gap-2 text-xs">
             <span className="text-slate-500">Saldo inicial do mês</span>
             <input
+              key={mk}
               type="number" step="0.01"
               defaultValue={saldoInicial}
               onBlur={(e) => onSetSaldoInicial(mk, Number(e.target.value) || 0)}
@@ -1471,7 +2131,7 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
 
 /* --------------------------------- Cartão de Crédito ------------------------ */
 
-function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
+function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprender }) {
   const agora = new Date();
   const [mesFatura, setMesFatura] = useState(agora.getMonth() + 1);
   const [anoFatura, setAnoFatura] = useState(agora.getFullYear());
@@ -1498,6 +2158,8 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
   // de propósito (arquivo, colunas, formato, mês da fatura).
   const pendentesRef = useRef(pendentes);
   pendentesRef.current = pendentes;
+  const historicoRef = useRef(historico);
+  historicoRef.current = historico;
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -1539,13 +2201,15 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
           && (p.mesFatura || p.data.slice(0, 7)) === mkFatura
         ));
         if (match) usados.add(match.id);
+        const doHistorico = (historicoRef.current || {})[normalizarDescricao(descricao)];
         return {
           id: uid(),
           data,
           descricao,
           valorAbs,
           valorOriginal: valor,
-          categoria: match ? match.categoria : sugerirCategoria(descricao),
+          categoria: match ? match.categoria : (doHistorico || sugerirCategoria(descricao)),
+          pelaHistoria: !match && !!doHistorico,
           incluir: valor !== 0 && !!data && !!descricao,
           correspondeId: match ? match.id : null,
         };
@@ -1573,6 +2237,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
       .filter((l) => l.correspondeId)
       .map((l) => ({ id: l.correspondeId, patch: { data: l.data, descricao: l.descricao, categoria: l.categoria, confirmado: true, mesFatura: mkFatura } }));
     onConfirm(novos, atualizacoes);
+    if (onAprender) onAprender(selecionadas.map((l) => ({ descricao: l.descricao, categoria: l.categoria })));
     if (replicarContasPagar && onReplicar) {
       const porCategoria = {};
       selecionadas.forEach((l) => { porCategoria[l.categoria] = (porCategoria[l.categoria] || 0) + l.valorAbs; });
@@ -1669,7 +2334,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
             <>
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 text-amber-700 text-xs rounded-xl px-3 py-2.5 mb-3">
                 <Icon name="Info" size={14} className="mt-0.5 shrink-0" />
-                Confira e ajuste a categoria de cada linha antes de confirmar — a sugestão é automática e pode errar.
+                Confira e ajuste a categoria de cada linha antes de confirmar — compras que já apareceram antes usam a categoria do histórico; as demais têm sugestão automática e podem errar.
                 {qtdCorrespondentes > 0 && <> {qtdCorrespondentes} linha{qtdCorrespondentes !== 1 ? 's' : ''} já bate{qtdCorrespondentes === 1 ? '' : 'm'} com o que você já tinha lançado.</>}
               </div>
               <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
@@ -1700,6 +2365,11 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
                           {l.correspondeId && (
                             <div className="text-[10px] text-emerald-600 flex items-center gap-1 mt-0.5">
                               <Icon name="Check" size={10} /> já lançado — só confirmar
+                            </div>
+                          )}
+                          {l.pelaHistoria && (
+                            <div className="text-[10px] text-sky-600 flex items-center gap-1 mt-0.5">
+                              <Icon name="RefreshCw" size={10} /> categoria pelo histórico
                             </div>
                           )}
                         </td>
@@ -1751,15 +2421,17 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar }) {
   );
 }
 
-function LancamentoCartaoModal({ open, onClose, onSave }) {
+function LancamentoCartaoModal({ open, onClose, onSave, historico }) {
   const agora = new Date();
   const blank = {
     descricao: '', categoria: CATEGORIAS_PAGAR[0], valor: '', data: todayStr(),
     mesFaturaMes: agora.getMonth() + 1, mesFaturaAno: agora.getFullYear(),
   };
   const [form, setForm] = useState(blank);
+  const [categoriaManual, setCategoriaManual] = useState(false);
 
-  useEffect(() => { if (open) setForm(blank); }, [open]);
+  useEffect(() => { if (open) { setForm(blank); setCategoriaManual(false); } }, [open]);
+  const doHistorico = (historico || {})[normalizarDescricao(form.descricao)];
   if (!open) return null;
   const valid = form.descricao.trim() && Number(form.valor) > 0;
 
@@ -1791,16 +2463,23 @@ function LancamentoCartaoModal({ open, onClose, onSave }) {
             <label className="text-xs font-medium text-slate-500">Descrição</label>
             <input
               value={form.descricao}
-              onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+              onChange={(e) => {
+                const descricao = e.target.value;
+                const cat = (historico || {})[normalizarDescricao(descricao)];
+                setForm({ ...form, descricao, ...(cat && !categoriaManual ? { categoria: cat } : {}) });
+              }}
               placeholder="Ex: Supermercado, Uber..."
               className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500">Categoria</label>
+            <label className="text-xs font-medium text-slate-500">
+              Categoria
+              {doHistorico && !categoriaManual && <span className="ml-1.5 text-[10px] font-normal text-sky-600">· preenchida pelo histórico</span>}
+            </label>
             <select
               value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              onChange={(e) => { setCategoriaManual(true); setForm({ ...form, categoria: e.target.value }); }}
               className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             >
               {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -1850,15 +2529,45 @@ function LancamentoCartaoModal({ open, onClose, onSave }) {
   );
 }
 
-function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, onEditCategoria, onDelete, onClearAll }) {
+function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, onAddManual, onReplicar, onEditCategoria, onDelete, onClearMes }) {
   const [modalManualOpen, setModalManualOpen] = useState(false);
   const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [ano, setAno] = useState(now.getFullYear());
+  const [mes, setMes] = usePersistentState('cartao:mes', now.getMonth() + 1);
+  const [ano, setAno] = usePersistentState('cartao:ano', now.getFullYear());
+  const [categoriasSel, setCategoriasSel] = usePersistentState('cartao:cats', []);
+  const [busca, setBusca] = usePersistentState('cartao:busca', '');
+  const [statusFiltro, setStatusFiltro] = usePersistentState('cartao:status', 'todos'); // todos | confirmado | aguardando
+  const [ordem, setOrdem] = usePersistentState('cartao:ordem', 'data'); // data | valorDesc | valorAsc | descricao
   const mk = monthKey(ano, mes);
 
   const doMes = useMemo(() => [...transacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) === mk)].sort((a, b) => a.data.localeCompare(b.data)), [transacoes, mk]);
   const totalMes = doMes.reduce((s, t) => s + t.valor, 0);
+
+  const filtrados = useMemo(() => {
+    let lista = doMes;
+    if (categoriasSel.length > 0) lista = lista.filter((t) => categoriasSel.includes(t.categoria));
+    if (statusFiltro === 'confirmado') lista = lista.filter((t) => t.confirmado !== false);
+    if (statusFiltro === 'aguardando') lista = lista.filter((t) => t.confirmado === false);
+    if (busca.trim()) {
+      const termo = busca.trim().toLowerCase();
+      lista = lista.filter((t) => (t.descricao || '').toLowerCase().includes(termo));
+    }
+    const ord = {
+      data: (a, b) => a.data.localeCompare(b.data),
+      valorDesc: (a, b) => b.valor - a.valor,
+      valorAsc: (a, b) => a.valor - b.valor,
+      descricao: (a, b) => (a.descricao || '').localeCompare(b.descricao || '', 'pt-BR'),
+    }[ordem] || ((a, b) => a.data.localeCompare(b.data));
+    return [...lista].sort(ord);
+  }, [doMes, categoriasSel, statusFiltro, busca, ordem]);
+  const totalFiltrado = filtrados.reduce((s, t) => s + t.valor, 0);
+  const temFiltro = categoriasSel.length > 0 || statusFiltro !== 'todos' || busca.trim() !== '';
+
+  const porCategoriaMes = useMemo(() => {
+    const map = {};
+    doMes.forEach((t) => { map[t.categoria] = (map[t.categoria] || 0) + t.valor; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [doMes]);
 
   // últimos 6 meses para comparativo
   const ultimosMeses = useMemo(() => {
@@ -1895,6 +2604,11 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
       .sort((a, b) => Math.max(b.orcado, b.realizado) - Math.max(a.orcado, a.realizado));
   }, [doMes, orcamentos, mk]);
 
+  const limparMes = () => {
+    const msg = `Isso vai apagar os ${doMes.length} lançamentos de cartão da fatura de ${MESES[mes - 1]} ${ano} (${formatBRL(totalMes)}). Os outros meses e os lançamentos de Contas a Pagar não são afetados. Continuar?`;
+    if (window.confirm && window.confirm(msg)) onClearMes(mk);
+  };
+
   return (
     <div className="pb-24 space-y-4">
       <Card className="p-4">
@@ -1907,31 +2621,92 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
         </button>
       </Card>
 
-      <ImportarExtrato onConfirm={onImport} pendentes={transacoes.filter((t) => t.confirmado === false)} onReplicar={onReplicar} />
+      <ImportarExtrato
+        onConfirm={onImport}
+        pendentes={transacoes.filter((t) => t.confirmado === false)}
+        onReplicar={onReplicar}
+        historico={historico}
+        onAprender={onAprender}
+      />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
-        <div className="text-sm text-slate-500">Total no mês: <b className="text-red-500">{formatBRL(totalMes)}</b></div>
+        <div className="text-sm text-slate-500">Total no mês: <b className="text-red-500 pf-num">{formatBRL(totalMes)}</b></div>
       </div>
+
+      {porCategoriaMes.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pf-scroll pb-1 -mx-4 px-4">
+          {porCategoriaMes.map(([c, v]) => {
+            const ativo = categoriasSel.includes(c);
+            return (
+              <button
+                key={c}
+                onClick={() => setCategoriasSel(ativo ? categoriasSel.filter((x) => x !== c) : [...categoriasSel, c])}
+                className={`shrink-0 text-left rounded-xl px-3 py-2 border transition ${ativo ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 hover:border-emerald-300'}`}
+              >
+                <div className={`text-[10px] ${ativo ? 'text-emerald-50' : 'text-slate-500'}`}>{c}</div>
+                <div className={`text-sm font-semibold pf-num ${ativo ? 'text-white' : 'text-slate-700'}`}>{formatBRL(v)}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         <div className="p-4 pb-0 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-700">Lançamentos da fatura</h3>
-          {transacoes.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Lançamentos da fatura</h3>
+            {temFiltro && <p className="text-[11px] text-slate-400 pf-num">{filtrados.length} de {doMes.length} lançamentos · {formatBRL(totalFiltrado)}</p>}
+          </div>
+          {doMes.length > 0 && (
             <button
-              onClick={() => {
-                if (window.confirm && window.confirm('Isso vai apagar TODOS os lançamentos de cartão já importados (de todos os meses). Os lançamentos de Contas a Pagar não são afetados. Continuar?')) {
-                  onClearAll();
-                }
-              }}
+              onClick={limparMes}
               className="flex items-center gap-1.5 text-xs font-medium text-red-500 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition shrink-0"
             >
-              <Icon name="Trash2" size={13} /> Limpar tudo
+              <Icon name="Trash2" size={13} /> Limpar mês
             </button>
           )}
         </div>
+
+        <div className="px-4 pt-3 flex flex-wrap items-center gap-2">
+          <CategoryMultiSelect categorias={CATEGORIAS_PAGAR} selected={categoriasSel} onChange={setCategoriasSel} />
+          <div className="flex bg-slate-100 rounded-xl p-1 text-xs font-medium">
+            {[{ v: 'todos', l: 'Todos' }, { v: 'confirmado', l: 'Confirmados' }, { v: 'aguardando', l: 'Aguardando extrato' }].map((op) => (
+              <button
+                key={op.v}
+                onClick={() => setStatusFiltro(op.v)}
+                className={`px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+              >
+                {op.l}
+              </button>
+            ))}
+          </div>
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value)} className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600">
+            <option value="data">Ordenar por data</option>
+            <option value="valorDesc">Maior valor primeiro</option>
+            <option value="valorAsc">Menor valor primeiro</option>
+            <option value="descricao">Descrição (A → Z)</option>
+          </select>
+          <div className="relative flex-1 min-w-[160px]">
+            <Icon name="Filter" size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por descrição..."
+              className="w-full text-sm bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            />
+          </div>
+          {temFiltro && (
+            <button onClick={() => { setCategoriasSel([]); setStatusFiltro('todos'); setBusca(''); }} className="text-xs font-medium text-emerald-700 hover:underline">
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
         {doMes.length === 0 ? (
           <EmptyState text="Nenhum lançamento do cartão importado neste mês." />
+        ) : filtrados.length === 0 ? (
+          <EmptyState text="Nenhum lançamento com esses filtros." />
         ) : (
           <div className="overflow-x-auto pf-scroll mt-3">
             <table className="w-full text-sm">
@@ -1945,9 +2720,9 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
                 </tr>
               </thead>
               <tbody>
-                {doMes.map((t) => (
+                {filtrados.map((t) => (
                   <tr key={t.id} className={`border-b border-slate-50 hover:bg-emerald-50/30 transition ${t.confirmado === false ? 'bg-amber-50/40' : ''}`}>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">
+                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500 pf-num">
                       {formatDateBR(t.data)}
                       {t.data.slice(0, 7) !== mk && (
                         <div className="text-[10px] text-slate-400">compra de {MESES[Number(t.data.slice(5, 7)) - 1].slice(0, 3)}</div>
@@ -1964,13 +2739,16 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
                     <td className="px-2 py-2.5">
                       <select
                         value={t.categoria}
-                        onChange={(e) => onEditCategoria({ ...t, categoria: e.target.value })}
+                        onChange={(e) => {
+                          onEditCategoria({ ...t, categoria: e.target.value });
+                          onAprender([{ descricao: t.descricao, categoria: e.target.value }]);
+                        }}
                         className="border border-slate-200 rounded-lg px-1.5 py-1 text-xs bg-white"
                       >
                         {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </td>
-                    <td className="px-2 py-2.5 text-right font-medium text-red-500 whitespace-nowrap">{formatBRL(t.valor)}</td>
+                    <td className="px-2 py-2.5 text-right font-medium text-red-500 whitespace-nowrap pf-num">{formatBRL(t.valor)}</td>
                     <td className="px-2 py-2.5 text-right">
                       <button onClick={() => onDelete(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
                         <Icon name="Trash2" size={13} />
@@ -1979,6 +2757,15 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
                   </tr>
                 ))}
               </tbody>
+              {temFiltro && (
+                <tfoot>
+                  <tr className="bg-slate-50 text-sm font-semibold text-slate-700">
+                    <td className="px-4 py-2" colSpan={3}>Total filtrado</td>
+                    <td className="px-2 py-2 text-right text-red-500 pf-num">{formatBRL(totalFiltrado)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
@@ -2024,9 +2811,11 @@ function CartaoTab({ transacoes, orcamentos, onImport, onAddManual, onReplicar, 
 
       <LancamentoCartaoModal
         open={modalManualOpen}
+        historico={historico}
         onClose={() => setModalManualOpen(false)}
         onSave={(data) => {
           onAddManual({ ...data, id: uid(), confirmado: false });
+          onAprender([{ descricao: data.descricao, categoria: data.categoria }]);
           setModalManualOpen(false);
         }}
       />
@@ -2278,17 +3067,49 @@ function AtualizarValorModal({ open, onClose, onSave, ativo, movimentacoes }) {
   );
 }
 
-function AtivoCard({ ativo, movimentacoes, onEdit, onDelete, onAddMov, onDeleteMov, onAtualizarValor }) {
+const CORES_TIPO_ATIVO = {
+  'Renda Fixa': '#059669', 'Ações': '#0ea5e9', 'Fundos Imobiliários': '#f59e0b', 'Fundos': '#8b5cf6',
+  Criptomoedas: '#f43f5e', 'Poupança': '#14b8a6', Outro: '#64748b',
+};
+const formatPct = (v, casas = 2) => `${((Number(v) || 0) * 100).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
+
+// Rentabilidade pelo método de Dietz modificado: rendimento ÷ capital médio aplicado no período.
+function rentabilidadeDoAtivo(ativo, movimentacoes) {
+  const hoje = todayStr();
+  const minhas = movimentacoes.filter((m) => m.ativoId === ativo.id);
+  const datas = [ativo.dataInicio, ...minhas.map((m) => m.data)].filter(Boolean).sort();
+  const inicio = datas[0] || hoje;
+  const dia = 86400000;
+  const dias = Math.max((new Date(hoje) - new Date(inicio)) / dia, 1);
+  let base = ativo.aporteInicial || 0;
+  let ganho = 0;
+  minhas.forEach((m) => {
+    if (m.tipo === 'rendimento') { ganho += m.valor; return; }
+    const peso = Math.min(Math.max((new Date(hoje) - new Date(m.data)) / dia, 0) / dias, 1);
+    base += peso * (m.tipo === 'aporte' ? m.valor : -m.valor);
+  });
+  const meses = Math.max(dias / 30.4375, 1);
+  const total = base > 0 ? ganho / base : 0;
+  const mensal = total > -1 ? Math.pow(1 + total, 1 / meses) - 1 : 0;
+  return { ganho, total, mensal, meses, inicio, base };
+}
+
+function AtivoCard({ ativo, movimentacoes, patrimonioCarteira, cdiMensal, onEdit, onDelete, onAddMov, onDeleteMov, onAtualizarValor }) {
   const patrimonio = patrimonioDoAtivo(ativo, movimentacoes);
   const minhas = movimentacoes.filter((m) => m.ativoId === ativo.id).sort((a, b) => b.data.localeCompare(a.data));
   const ganho = patrimonio - (ativo.aporteInicial || 0) - minhas.filter((m) => m.tipo === 'aporte').reduce((s, m) => s + m.valor, 0) + minhas.filter((m) => m.tipo === 'resgate').reduce((s, m) => s + m.valor, 0);
+  const rent = rentabilidadeDoAtivo(ativo, movimentacoes);
+  const cor = CORES_TIPO_ATIVO[ativo.tipo] || '#64748b';
+  const participacao = patrimonioCarteira > 0 ? patrimonio / patrimonioCarteira : 0;
+  const ultima = minhas[0];
 
   return (
-    <Card className="p-4">
+    <Card className="p-4 relative overflow-hidden">
+      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: cor }} />
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div>
-          <h4 className="text-sm font-semibold text-slate-800">{ativo.nome}</h4>
-          <span className="text-[11px] text-slate-400">{ativo.tipo}</span>
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold text-slate-800 truncate">{ativo.nome}</h4>
+          <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full mt-0.5" style={{ background: `${cor}1a`, color: cor }}>{ativo.tipo}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button onClick={() => onEdit(ativo)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
@@ -2300,9 +3121,32 @@ function AtivoCard({ ativo, movimentacoes, onEdit, onDelete, onAddMov, onDeleteM
         </div>
       </div>
 
-      <div className="text-xl font-semibold text-slate-800">{formatBRL(patrimonio)}</div>
-      <div className={`text-xs mt-0.5 ${ganho < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+      <div className="text-xl font-semibold text-slate-800 pf-num">{formatBRL(patrimonio)}</div>
+      <div className={`text-xs mt-0.5 pf-num ${ganho < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
         {ganho >= 0 ? '+' : ''}{formatBRL(ganho)} em rendimento
+      </div>
+
+      <div className="mt-3">
+        <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>{formatPct(participacao, 1)} da carteira</span>
+          {ultima && <span>última mov. {formatDateBR(ultima.data)}</span>}
+        </div>
+        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-full rounded-full" style={{ width: `${participacao * 100}%`, background: cor }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className="rounded-xl bg-slate-50 px-2.5 py-1.5">
+          <div className="text-[10px] text-slate-400">Rentab. média</div>
+          <div className="text-sm font-semibold text-slate-700 pf-num">{formatPct(rent.mensal)} <span className="text-[10px] font-normal text-slate-400">a.m.</span></div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-2.5 py-1.5">
+          <div className="text-[10px] text-slate-400">vs CDI</div>
+          <div className={`text-sm font-semibold pf-num ${cdiMensal > 0 && rent.mensal >= cdiMensal ? 'text-emerald-600' : 'text-amber-600'}`}>
+            {cdiMensal > 0 ? `${Math.round((rent.mensal / cdiMensal) * 100)}% do CDI` : '—'}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mt-3">
@@ -2343,6 +3187,88 @@ function AtivoCard({ ativo, movimentacoes, onEdit, onDelete, onAddMov, onDeleteM
         </details>
       )}
     </Card>
+  );
+}
+
+// Atualiza o valor de todos os ativos de uma vez (como o "Atualizar valor" de cada um).
+function AtualizarTodosModal({ open, onClose, onSave, ativos, movimentacoes }) {
+  const [valores, setValores] = useState({});
+  const [tipos, setTipos] = useState({});
+  const [data, setData] = useState(todayStr());
+  useEffect(() => { if (open) { setValores({}); setTipos({}); setData(todayStr()); } }, [open]);
+  if (!open) return null;
+
+  const linhas = ativos.map((a) => {
+    const calc = patrimonioDoAtivo(a, movimentacoes);
+    const v = valores[a.id];
+    const dif = v === undefined || v === '' ? 0 : Number(v) - calc;
+    const tipo = dif < 0 ? 'resgate' : (tipos[a.id] || 'rendimento');
+    return { a, calc, v, dif, tipo };
+  });
+  const comMudanca = linhas.filter((l) => Math.abs(l.dif) >= 0.005);
+
+  const salvar = () => {
+    if (comMudanca.length === 0) return;
+    onSave(comMudanca.map((l) => ({ id: uid(), ativoId: l.a.id, tipo: l.tipo, valor: Math.round(Math.abs(l.dif) * 100) / 100, data })));
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-semibold text-slate-800">Atualizar saldos da carteira</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">Digite o valor de hoje de cada ativo (extrato/corretora). A diferença vira rendimento, aporte ou resgate. Deixe em branco o que não mudou.</p>
+        <div className="flex items-center gap-2 mb-3">
+          <label className="text-xs font-medium text-slate-500">Data</label>
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+        </div>
+        <div className="space-y-2">
+          {linhas.map(({ a, calc, v, dif, tipo }) => (
+            <div key={a.id} className="rounded-xl border border-slate-100 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-700 truncate">{a.nome}</div>
+                  <div className="text-[10px] text-slate-400 pf-num">hoje no app: {formatBRL(calc)}</div>
+                </div>
+                <div className="relative shrink-0">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">R$</span>
+                  <input
+                    type="number" step="0.01" value={v ?? ''} placeholder={calc.toFixed(2)}
+                    onChange={(e) => setValores({ ...valores, [a.id]: e.target.value })}
+                    className="w-36 text-sm text-right border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  />
+                </div>
+              </div>
+              {Math.abs(dif) >= 0.005 && (
+                <div className="flex items-center justify-between gap-2 mt-2">
+                  <span className={`text-xs font-medium pf-num ${dif > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{dif > 0 ? '+' : ''}{formatBRL(dif)}</span>
+                  {dif > 0 ? (
+                    <div className="flex bg-emerald-50 rounded-lg p-0.5 text-[11px] font-medium">
+                      {['rendimento', 'aporte'].map((op) => (
+                        <button key={op} onClick={() => setTipos({ ...tipos, [a.id]: op })} className={`px-2 py-1 rounded-md ${tipo === op ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}>
+                          {TIPOS_MOV.find((t) => t.v === op)?.l}
+                        </button>
+                      ))}
+                    </div>
+                  ) : <span className="text-[11px] text-slate-500">vira resgate</span>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={salvar}
+          disabled={comMudanca.length === 0}
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Salvar {comMudanca.length > 0 ? `${comMudanca.length} ${comMudanca.length > 1 ? 'atualizações' : 'atualização'}` : ''}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2499,7 +3425,7 @@ function statusEmprestimo(e) {
 function InvestimentosTab({
   ativos, movimentacoes, meta, emprestimos,
   onAddAtivo, onEditAtivo, onDeleteAtivo,
-  onAddMov, onDeleteMov,
+  onAddMov, onAddMovs, onDeleteMov,
   onSaveMeta,
   onAddEmprestimo, onEditEmprestimo, onDeleteEmprestimo, onReceberEmprestimo,
 }) {
@@ -2507,19 +3433,59 @@ function InvestimentosTab({
   const [editandoAtivo, setEditandoAtivo] = useState(null);
   const [movAtivo, setMovAtivo] = useState(null);
   const [atualizandoValorAtivo, setAtualizandoValorAtivo] = useState(null);
+  const [atualizarTodosOpen, setAtualizarTodosOpen] = useState(false);
   const [emprestimoModalOpen, setEmprestimoModalOpen] = useState(false);
   const [editandoEmprestimo, setEditandoEmprestimo] = useState(null);
   const [recebendoEmprestimo, setRecebendoEmprestimo] = useState(null);
-  const [periodoView, setPeriodoView] = useState('mes'); // mes | total
+  const [periodoView, setPeriodoView] = usePersistentState('invest:periodo', 'mes'); // mes | total
   const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [ano, setAno] = useState(now.getFullYear());
+  const [mes, setMes] = usePersistentState('invest:mes', now.getMonth() + 1);
+  const [ano, setAno] = usePersistentState('invest:ano', now.getFullYear());
   const mk = monthKey(ano, mes);
+
+  // CDI: valor digitado (se houver) ou o último CDI anual publicado pelo Banco Central
+  const [cdiBcb, setCdiBcb] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (vivo && j && j[0]) setCdiBcb({ anual: parseFloat(String(j[0].valor).replace(',', '.')) / 100, data: j[0].data });
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const cdiManual = meta?.cdiAnual != null && meta.cdiAnual !== '' ? Number(meta.cdiAnual) / 100 : null;
+  const cdiAnual = cdiManual ?? cdiBcb?.anual ?? 0;
+  const cdiMensal = cdiAnual > 0 ? Math.pow(1 + cdiAnual, 1 / 12) - 1 : 0;
+  const [cdiForm, setCdiForm] = useState(meta?.cdiAnual ?? '');
+  useEffect(() => { setCdiForm(meta?.cdiAnual ?? ''); }, [meta]);
 
   const patrimonioTotal = useMemo(
     () => ativos.reduce((s, a) => s + patrimonioDoAtivo(a, movimentacoes), 0),
     [ativos, movimentacoes],
   );
+
+  const resumoCarteira = useMemo(() => {
+    let base = 0; let somaPonderada = 0; let ganho = 0; let aportado = 0;
+    ativos.forEach((a) => {
+      const r = rentabilidadeDoAtivo(a, movimentacoes);
+      if (r.base > 0) { base += r.base; somaPonderada += r.base * r.mensal; }
+      ganho += r.ganho;
+      const minhas = movimentacoes.filter((m) => m.ativoId === a.id);
+      aportado += (a.aporteInicial || 0)
+        + minhas.filter((m) => m.tipo === 'aporte').reduce((s, m) => s + m.valor, 0)
+        - minhas.filter((m) => m.tipo === 'resgate').reduce((s, m) => s + m.valor, 0);
+    });
+    const mensal = base > 0 ? somaPonderada / base : 0;
+    return { mensal, anual: Math.pow(1 + mensal, 12) - 1, ganho, aportado };
+  }, [ativos, movimentacoes]);
+
+  const porTipo = useMemo(() => {
+    const map = {};
+    ativos.forEach((a) => { map[a.tipo] = (map[a.tipo] || 0) + patrimonioDoAtivo(a, movimentacoes); });
+    return Object.entries(map).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  }, [ativos, movimentacoes]);
 
   const movDoPeriodo = useMemo(
     () => (periodoView === 'total' ? movimentacoes : movimentacoes.filter((m) => m.data.slice(0, 7) === mk)),
@@ -2552,23 +3518,132 @@ function InvestimentosTab({
   const metaPct = metaValorAlvo > 0 ? Math.min((patrimonioTotal / metaValorAlvo) * 100, 100) : 0;
   const metaMeses = meta?.prazo ? monthsUntil(meta.prazo) : null;
   const metaPorMes = metaMeses && metaMeses > 0 ? metaFalta / metaMeses : null;
+  const salvarMeta = () => onSaveMeta({ ...(meta || {}), valorAlvo: Number(metaForm.valorAlvo) || 0, prazo: metaForm.prazo });
 
   // Empréstimos
   const emprestimosPendentes = emprestimos.filter((e) => statusEmprestimo(e) !== 'Recebido');
   const totalPendente = emprestimosPendentes.reduce((s, e) => s + (e.valor - (e.valorRecebido || 0)), 0);
 
+  const pctDoCdi = cdiMensal > 0 ? resumoCarteira.mensal / cdiMensal : 0;
+  const maxBarra = Math.max(resumoCarteira.mensal, cdiMensal, 0.0001);
+
   return (
     <div className="pb-24 space-y-4">
-      <Card className="p-4">
-        <SectionTitle icon="Landmark" title="Patrimônio investido" subtitle={`${ativos.length} ativo${ativos.length !== 1 ? 's' : ''} cadastrado${ativos.length !== 1 ? 's' : ''}`} />
-        <div className="text-2xl font-semibold text-slate-800 mb-3">{formatBRL(patrimonioTotal)}</div>
-        <button
-          onClick={() => { setEditandoAtivo(null); setAtivoModalOpen(true); }}
-          className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
-        >
-          <Icon name="Plus" size={15} /> Novo ativo
-        </button>
+      {/* Painel da carteira */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-900 to-emerald-700 text-white p-5 sm:p-6 shadow-lg shadow-emerald-900/20">
+        <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-white/5" />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200/90 font-medium">Patrimônio investido</div>
+              <div className="text-3xl font-bold tracking-tight mt-1 pf-num">{formatBRL(patrimonioTotal)}</div>
+              <div className="text-xs text-emerald-100/80 mt-0.5">{ativos.length} ativo{ativos.length !== 1 ? 's' : ''} na carteira</div>
+            </div>
+            <button
+              onClick={() => { setEditandoAtivo(null); setAtivoModalOpen(true); }}
+              className="flex items-center gap-1.5 bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-semibold px-3 py-2 rounded-xl transition shrink-0"
+            >
+              <Icon name="Plus" size={14} /> Novo ativo
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-5">
+            <div className="rounded-2xl bg-white/10 px-3 py-2.5">
+              <div className="text-[10px] text-emerald-100/80">Total aplicado</div>
+              <div className="text-sm font-semibold pf-num">{formatBRL(resumoCarteira.aportado)}</div>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-3 py-2.5">
+              <div className="text-[10px] text-emerald-100/80">Rendimento acumulado</div>
+              <div className="text-sm font-semibold text-emerald-300 pf-num">+{formatBRL(resumoCarteira.ganho)}</div>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-3 py-2.5">
+              <div className="text-[10px] text-emerald-100/80">Rentab. média</div>
+              <div className="text-sm font-semibold pf-num">{formatPct(resumoCarteira.mensal)} a.m.</div>
+            </div>
+          </div>
+          {porTipo.length > 0 && (
+            <div className="mt-5">
+              <div className="flex h-2.5 rounded-full overflow-hidden bg-white/10">
+                {porTipo.map(([tipo, v]) => (
+                  <div key={tipo} title={`${tipo}: ${formatBRL(v)}`} style={{ width: `${(v / patrimonioTotal) * 100}%`, background: CORES_TIPO_ATIVO[tipo] || '#94a3b8' }} />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                {porTipo.map(([tipo, v]) => (
+                  <span key={tipo} className="flex items-center gap-1.5 text-[11px] text-emerald-50/90">
+                    <span className="w-2 h-2 rounded-full" style={{ background: CORES_TIPO_ATIVO[tipo] || '#94a3b8' }} />
+                    {tipo} · {formatPct(v / patrimonioTotal, 0)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Rentabilidade x CDI */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle icon="Activity" title="Rentabilidade da carteira x CDI" subtitle="Média ponderada pelo capital aplicado em cada ativo" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div className="rounded-2xl bg-emerald-50 p-3">
+            <div className="text-[11px] text-emerald-700">Carteira</div>
+            <div className="text-xl font-bold text-emerald-700 pf-num">{formatPct(resumoCarteira.mensal)} <span className="text-xs font-medium">a.m.</span></div>
+            <div className="text-[11px] text-emerald-700/70 pf-num">≈ {formatPct(resumoCarteira.anual)} ao ano</div>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-3">
+            <div className="text-[11px] text-slate-500">CDI</div>
+            <div className="text-xl font-bold text-slate-700 pf-num">{formatPct(cdiMensal)} <span className="text-xs font-medium">a.m.</span></div>
+            <div className="text-[11px] text-slate-400 pf-num">{formatPct(cdiAnual)} ao ano</div>
+          </div>
+          <div className={`rounded-2xl p-3 ${pctDoCdi >= 1 ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
+            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-emerald-50' : ''}`}>Sua carteira rende</div>
+            <div className="text-xl font-bold pf-num">{cdiMensal > 0 ? `${Math.round(pctDoCdi * 100)}% do CDI` : '—'}</div>
+            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-emerald-50/90' : ''}`}>{pctDoCdi >= 1 ? 'acima do CDI' : 'abaixo do CDI'}</div>
+          </div>
+        </div>
+        <div className="space-y-2.5">
+          {[
+            { label: 'Carteira', v: resumoCarteira.mensal, cor: '#059669' },
+            { label: 'CDI', v: cdiMensal, cor: '#94a3b8' },
+          ].map((b) => (
+            <div key={b.label} className="flex items-center gap-3">
+              <span className="w-16 text-xs text-slate-500">{b.label}</span>
+              <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${(Math.max(b.v, 0) / maxBarra) * 100}%`, background: b.cor }} />
+              </div>
+              <span className="w-16 text-right text-xs font-semibold text-slate-700 pf-num">{formatPct(b.v)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+          <span>CDI usado:</span>
+          <div className="relative">
+            <input
+              type="number" step="0.01" value={cdiForm}
+              placeholder={cdiBcb ? (cdiBcb.anual * 100).toFixed(2) : '0,00'}
+              onChange={(e) => setCdiForm(e.target.value)}
+              onBlur={() => { if (String(cdiForm) !== String(meta?.cdiAnual ?? '')) onSaveMeta({ ...(meta || {}), cdiAnual: cdiForm === '' ? null : Number(cdiForm) }); }}
+              className="w-24 text-xs text-right border border-slate-200 rounded-lg pl-2 pr-7 py-1"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2">%</span>
+          </div>
+          <span>a.a. · {cdiManual != null ? 'valor digitado (apague para usar o do Banco Central)' : cdiBcb ? `Banco Central, ${cdiBcb.data}` : 'buscando no Banco Central…'}</span>
+        </div>
+        <p className="text-[10px] text-slate-400 mt-2">
+          Rentabilidade de cada ativo = rendimentos lançados ÷ capital médio aplicado desde a data de início, convertida em taxa mensal. Quanto mais em dia estiverem os rendimentos lançados, mais fiel fica a comparação.
+        </p>
       </Card>
+
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-700">Meus ativos</h3>
+        {ativos.length > 0 && (
+          <button
+            onClick={() => setAtualizarTodosOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 px-3 py-2 rounded-xl transition"
+          >
+            <Icon name="RefreshCw" size={13} /> Atualizar saldos de todos
+          </button>
+        )}
+      </div>
 
       {ativos.length === 0 ? (
         <EmptyState text="Cadastre seu primeiro ativo para começar a acompanhar." />
@@ -2579,6 +3654,8 @@ function InvestimentosTab({
               key={a.id}
               ativo={a}
               movimentacoes={movimentacoes}
+              patrimonioCarteira={patrimonioTotal}
+              cdiMensal={cdiMensal}
               onEdit={(at) => { setEditandoAtivo(at); setAtivoModalOpen(true); }}
               onDelete={onDeleteAtivo}
               onAddMov={setMovAtivo}
@@ -2610,15 +3687,15 @@ function InvestimentosTab({
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="bg-emerald-50/60 rounded-xl px-3 py-2">
             <div className="text-[11px] text-slate-500">Aportes</div>
-            <div className="text-sm font-semibold text-emerald-700">{formatBRL(totalAportes)}</div>
+            <div className="text-sm font-semibold text-emerald-700 pf-num">{formatBRL(totalAportes)}</div>
           </div>
           <div className="bg-red-50/60 rounded-xl px-3 py-2">
             <div className="text-[11px] text-slate-500">Resgates</div>
-            <div className="text-sm font-semibold text-red-500">{formatBRL(totalResgates)}</div>
+            <div className="text-sm font-semibold text-red-500 pf-num">{formatBRL(totalResgates)}</div>
           </div>
           <div className="bg-emerald-50/60 rounded-xl px-3 py-2">
             <div className="text-[11px] text-slate-500">Rendimento</div>
-            <div className="text-sm font-semibold text-emerald-700">{formatBRL(totalRendimento)}</div>
+            <div className="text-sm font-semibold text-emerald-700 pf-num">{formatBRL(totalRendimento)}</div>
           </div>
         </div>
         <ColumnChart
@@ -2638,7 +3715,7 @@ function InvestimentosTab({
               type="number" min="0" step="0.01"
               value={metaForm.valorAlvo}
               onChange={(e) => setMetaForm({ ...metaForm, valorAlvo: e.target.value })}
-              onBlur={() => onSaveMeta({ valorAlvo: Number(metaForm.valorAlvo) || 0, prazo: metaForm.prazo })}
+              onBlur={salvarMeta}
               placeholder="0,00"
               className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             />
@@ -2649,7 +3726,7 @@ function InvestimentosTab({
               type="date"
               value={metaForm.prazo}
               onChange={(e) => setMetaForm({ ...metaForm, prazo: e.target.value })}
-              onBlur={() => onSaveMeta({ valorAlvo: Number(metaForm.valorAlvo) || 0, prazo: metaForm.prazo })}
+              onBlur={salvarMeta}
               className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             />
           </div>
@@ -2657,11 +3734,11 @@ function InvestimentosTab({
         {metaValorAlvo > 0 && (
           <>
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-slate-500">{formatBRL(patrimonioTotal)} de {formatBRL(metaValorAlvo)}</span>
+              <span className="text-slate-500 pf-num">{formatBRL(patrimonioTotal)} de {formatBRL(metaValorAlvo)}</span>
               <span className="font-medium text-emerald-600">{metaPct.toFixed(0)}%</span>
             </div>
-            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2">
-              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${metaPct}%` }} />
+            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden mb-2">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all" style={{ width: `${metaPct}%` }} />
             </div>
             {metaFalta > 0 ? (
               <div className="text-xs text-amber-600">
@@ -2760,6 +3837,13 @@ function InvestimentosTab({
         movimentacoes={movimentacoes}
         onClose={() => setAtualizandoValorAtivo(null)}
         onSave={(data) => { onAddMov({ ...data, id: uid() }); setAtualizandoValorAtivo(null); }}
+      />
+      <AtualizarTodosModal
+        open={atualizarTodosOpen}
+        ativos={ativos}
+        movimentacoes={movimentacoes}
+        onClose={() => setAtualizarTodosOpen(false)}
+        onSave={(novas) => { onAddMovs(novas); setAtualizarTodosOpen(false); }}
       />
       <EmprestimoModal
         open={emprestimoModalOpen}
@@ -3198,8 +4282,8 @@ function FinConfigModal({ open, onClose, onSave, cfg }) {
 
 function FinanciamentoTab({ dados, onSave }) {
   const [extraSim, setExtraSim] = useState(null);
-  const [filtro, setFiltro] = useState('pagos');
-  const [cenarioTabela, setCenarioTabela] = useState('plano');
+  const [filtro, setFiltro] = usePersistentState('fin:filtro', 'pagos');
+  const [cenarioTabela, setCenarioTabela] = usePersistentState('fin:cenario', 'plano');
   const [mesOpen, setMesOpen] = useState(false);
   const [linhaOpen, setLinhaOpen] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -3500,6 +4584,7 @@ function App() {
   const [investMovimentacoes, setInvestMovimentacoes] = useState([]);
   const [investMeta, setInvestMeta] = useState({ valorAlvo: 0, prazo: '' });
   const [investEmprestimos, setInvestEmprestimos] = useState([]);
+  const [cartaoHistorico, setCartaoHistorico] = useState({});
   const [financiamento, setFinanciamento] = useState({ lancamentos: FIN_SEED_LANCAMENTOS, config: {} });
   const [errorMsg, setErrorMsg] = useState(null);
   const [savingState, setSavingState] = useState('idle'); // idle | saving | saved | error
@@ -3519,6 +4604,7 @@ function App() {
       if (dados.investMovimentacoes) setInvestMovimentacoes(dados.investMovimentacoes);
       if (dados.investMeta) setInvestMeta(dados.investMeta);
       if (dados.investEmprestimos) setInvestEmprestimos(dados.investEmprestimos);
+      if (dados.cartaoHistorico) setCartaoHistorico(dados.cartaoHistorico);
       if (dados.financiamento) setFinanciamento(dados.financiamento);
       setUltimaSincronia(new Date());
       if (silencioso) setErrorMsg(null);
@@ -3631,13 +4717,32 @@ function App() {
   const addManualCartao = (entry) => persist('cartaoTransacoes', [...cartaoTransacoes, entry], setCartaoTransacoes);
   const editarCategoriaCartao = (editada) => persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
   const excluirCartao = (t) => persist('cartaoTransacoes', cartaoTransacoes.filter((x) => x.id !== t.id), setCartaoTransacoes);
-  const limparCartao = () => persist('cartaoTransacoes', [], setCartaoTransacoes);
+  const limparCartaoMes = (mk) => persist('cartaoTransacoes', cartaoTransacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) !== mk), setCartaoTransacoes);
   const replicarCartaoEmContasPagar = (linhasPorCategoria, mk) => {
     const novosLancamentos = linhasPorCategoria.map((l) => ({
       id: uid(), tipo: 'pagar', descricao: `Cartão - ${l.categoria}`, categoria: l.categoria,
-      valor: l.valor, data: `${mk}-01`, quitado: false,
+      valor: l.valor, data: `${mk}-01`, quitado: false, grupoCartao: { mk, categoria: l.categoria },
     }));
     persist('lancamentos', [...lancamentos, ...novosLancamentos], setLancamentos);
+  };
+
+  // Histórico de categorias do cartão: o que já foi categorizado (inclusive meses apagados) é reaproveitado.
+  const historicoCartaoEfetivo = useMemo(() => {
+    const map = {};
+    [...cartaoTransacoes].sort((a, b) => a.data.localeCompare(b.data)).forEach((t) => {
+      const k = normalizarDescricao(t.descricao);
+      if (k) map[k] = t.categoria;
+    });
+    return { ...map, ...cartaoHistorico };
+  }, [cartaoTransacoes, cartaoHistorico]);
+  const aprenderCartao = (lista) => {
+    const novo = { ...cartaoHistorico };
+    let mudou = false;
+    lista.forEach((l) => {
+      const k = normalizarDescricao(l.descricao);
+      if (k && novo[k] !== l.categoria) { novo[k] = l.categoria; mudou = true; }
+    });
+    if (mudou) persist('cartaoHistorico', novo, setCartaoHistorico);
   };
 
   const addAtivo = (ativo) => persist('investAtivos', [...investAtivos, ativo], setInvestAtivos);
@@ -3648,6 +4753,7 @@ function App() {
     persist('investMovimentacoes', investMovimentacoes.filter((m) => m.ativoId !== ativo.id), setInvestMovimentacoes);
   };
   const addMov = (mov) => persist('investMovimentacoes', [...investMovimentacoes, mov], setInvestMovimentacoes);
+  const addMovs = (movs) => persist('investMovimentacoes', [...investMovimentacoes, ...movs], setInvestMovimentacoes);
   const deleteMov = (mov) => persist('investMovimentacoes', investMovimentacoes.filter((m) => m.id !== mov.id), setInvestMovimentacoes);
   const saveInvestMeta = (novaMeta) => persist('investMeta', novaMeta, setInvestMeta);
   const addEmprestimo = (e) => persist('investEmprestimos', [...investEmprestimos, e], setInvestEmprestimos);
@@ -3662,17 +4768,17 @@ function App() {
   const salvarFinanciamento = (novo) => persist('financiamento', novo, setFinanciamento);
 
   return (
-    <div className="pf-root min-h-screen bg-gradient-to-b from-emerald-50/40 to-white">
+    <div className="pf-root min-h-screen">
       <GlobalStyle />
 
-      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-emerald-100">
-        <div className="max-w-4xl mx-auto px-4 pt-4">
+      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur-md border-b border-slate-200/70 shadow-sm shadow-slate-900/5">
+        <div className="max-w-5xl mx-auto px-4 pt-3.5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-600/30">
                 <Icon name="Wallet" size={18} />
               </div>
-              <h1 className="text-[15px] font-semibold text-slate-800">Finanças da Casa</h1>
+              <h1 className="text-[15px] font-bold text-slate-800 tracking-tight">Finanças da Casa</h1>
             </div>
             <div className="flex items-center gap-2">
               <div className="text-[11px] text-slate-400 flex items-center gap-1 min-w-[70px] justify-end">
@@ -3695,14 +4801,14 @@ function App() {
             </div>
           </div>
 
-          <nav className="flex gap-1 mt-3 overflow-x-auto pf-scroll -mx-4 px-4">
+          <nav className="flex gap-1 mt-3 pb-2.5 overflow-x-auto pf-scroll -mx-4 px-4">
             {TABS.map((t) => {
               const active = tab === t.id;
               return (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition ${active ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap rounded-xl transition ${active ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25' : 'text-slate-500 hover:text-emerald-700 hover:bg-emerald-50'}`}
                 >
                   <Icon name={t.icon} size={14} /> {t.label}
                 </button>
@@ -3712,7 +4818,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 pt-4">
+      <main className="max-w-5xl mx-auto px-4 pt-5">
         {errorMsg && (
           <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-100 text-red-600 text-xs rounded-xl px-3 py-2.5">
             <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
@@ -3761,6 +4867,7 @@ function App() {
                 tipo="pagar"
                 categorias={CATEGORIAS_PAGAR}
                 lancamentos={lancamentos}
+                cartaoTransacoes={cartaoTransacoes}
                 onAdd={addLancamentos}
                 onEdit={editLancamento}
                 onToggleQuitado={toggleQuitado}
@@ -3772,12 +4879,14 @@ function App() {
               <CartaoTab
                 transacoes={cartaoTransacoes}
                 orcamentos={orcamentos}
+                historico={historicoCartaoEfetivo}
+                onAprender={aprenderCartao}
                 onImport={importarCartao}
                 onAddManual={addManualCartao}
                 onReplicar={replicarCartaoEmContasPagar}
                 onEditCategoria={editarCategoriaCartao}
                 onDelete={excluirCartao}
-                onClearAll={limparCartao}
+                onClearMes={limparCartaoMes}
               />
             )}
             {tab === 'investimentos' && (
@@ -3790,6 +4899,7 @@ function App() {
                 onEditAtivo={editAtivo}
                 onDeleteAtivo={deleteAtivo}
                 onAddMov={addMov}
+                onAddMovs={addMovs}
                 onDeleteMov={deleteMov}
                 onSaveMeta={saveInvestMeta}
                 onAddEmprestimo={addEmprestimo}
