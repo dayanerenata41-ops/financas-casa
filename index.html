@@ -1144,7 +1144,132 @@ function GrupoCartaoInfo({ itens, valorLancamento }) {
   );
 }
 
-function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, onEdit, onToggleQuitado, onDuplicate, onDelete }) {
+// Confirmação dentro do app (mais rápida que a janela do navegador e não interfere na sincronização).
+function ConfirmModal({ open, titulo, texto, confirmar = 'Excluir', onConfirm, onClose }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const tecla = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-3">
+          <Icon name="Trash2" size={18} />
+        </div>
+        <h3 className="text-base font-semibold text-slate-800">{titulo}</h3>
+        <p className="text-sm text-slate-500 mt-1">{texto}</p>
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          <button onClick={onClose} className="py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">Cancelar</button>
+          <button autoFocus onClick={onConfirm} className="py-2.5 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700">{confirmar}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinhaEdicaoMassa({ marcado, onMarcar, label, children }) {
+  return (
+    <div className={`rounded-xl border p-3 transition ${marcado ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}>
+      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+        <input type="checkbox" checked={marcado} onChange={(e) => onMarcar(e.target.checked)} className="accent-emerald-600 w-4 h-4" />
+        {label}
+      </label>
+      {marcado && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
+// Edição de vários lançamentos ao mesmo tempo: só muda o que for marcado.
+function EdicaoMassaModal({ open, onClose, onSave, itens, categorias, tipo }) {
+  const vazio = { status: 'manter', categoria: '', mudarData: false, data: todayStr(), mudarValor: false, valor: '', mudarDescricao: false, descricao: '' };
+  const [f, setF] = useState(vazio);
+  useEffect(() => { if (open) setF(vazio); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!open) return null;
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const rotPago = tipo === 'pagar' ? 'Pago' : 'Recebido';
+  const rotNaoPago = tipo === 'pagar' ? 'A pagar' : 'A receber';
+  const alteracoes = [
+    f.status !== 'manter' && `status: ${f.status === 'quitado' ? rotPago : rotNaoPago}`,
+    f.categoria && `categoria: ${f.categoria}`,
+    f.mudarData && f.data && `data: ${formatDateBR(f.data)}`,
+    f.mudarValor && Number(f.valor) > 0 && `valor: ${formatBRL(Number(f.valor))}`,
+    f.mudarDescricao && f.descricao.trim() && `descrição: ${f.descricao.trim()}`,
+  ].filter(Boolean);
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300 disabled:bg-slate-50 disabled:text-slate-400';
+
+  const salvar = () => {
+    if (alteracoes.length === 0) return;
+    onSave(itens.map((t) => ({
+      ...t,
+      ...(f.status !== 'manter' ? { quitado: f.status === 'quitado' } : {}),
+      ...(f.categoria ? { categoria: f.categoria } : {}),
+      ...(f.mudarData && f.data ? { data: f.data } : {}),
+      ...(f.mudarValor && Number(f.valor) > 0 ? { valor: Number(f.valor) } : {}),
+      ...(f.mudarDescricao && f.descricao.trim() ? { descricao: f.descricao.trim() } : {}),
+    })));
+  };
+
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll pf-fade">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-semibold text-slate-800">Editar {itens.length} lançamentos</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">Escolha só o que quer mudar. O resto de cada lançamento continua como está.</p>
+
+        <div className="space-y-2.5">
+          <div className="rounded-xl border border-slate-200 p-3">
+            <div className="text-sm font-medium text-slate-700 mb-2">Status</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[['manter', 'Manter'], ['quitado', rotPago], ['pendente', rotNaoPago]].map(([v, l]) => (
+                <button key={v} onClick={() => set('status', v)} className={`text-xs py-2 rounded-lg border transition ${f.status === v ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300'}`}>{l}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className={`rounded-xl border p-3 ${f.categoria ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}>
+            <div className="text-sm font-medium text-slate-700 mb-2">Categoria</div>
+            <select value={f.categoria} onChange={(e) => set('categoria', e.target.value)} className={`${inputCls} bg-white`}>
+              <option value="">Manter a categoria de cada um</option>
+              {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <LinhaEdicaoMassa marcado={f.mudarData} onMarcar={(v) => set('mudarData', v)} label="Mudar a data">
+            <input type="date" value={f.data} onChange={(e) => set('data', e.target.value)} className={inputCls} />
+          </LinhaEdicaoMassa>
+          <LinhaEdicaoMassa marcado={f.mudarValor} onMarcar={(v) => set('mudarValor', v)} label="Mudar o valor">
+            <input type="number" min="0" step="0.01" value={f.valor} onChange={(e) => set('valor', e.target.value)} placeholder="Novo valor para todos (R$)" className={inputCls} />
+          </LinhaEdicaoMassa>
+          <LinhaEdicaoMassa marcado={f.mudarDescricao} onMarcar={(v) => set('mudarDescricao', v)} label="Mudar a descrição">
+            <input value={f.descricao} onChange={(e) => set('descricao', e.target.value)} placeholder="Nova descrição para todos" className={inputCls} />
+          </LinhaEdicaoMassa>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+          {alteracoes.length === 0 ? 'Nenhuma alteração escolhida ainda.' : <>Vai aplicar em {itens.length} lançamentos: <b className="text-slate-700">{alteracoes.join(' · ')}</b></>}
+        </div>
+
+        <button
+          onClick={salvar}
+          disabled={alteracoes.length === 0}
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+        >
+          Aplicar em {itens.length} lançamentos
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, onEdit, onEditMany, onToggleQuitado, onDuplicate, onDelete, onDeleteMany }) {
   const now = new Date();
   const p = `contas:${tipo}`;
   const [mes, setMes] = usePersistentState(`${p}:mes`, now.getMonth() + 1);
@@ -1164,6 +1289,8 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [modoModal, setModoModal] = useState('novo'); // novo | editar | duplicar
+  const [massaOpen, setMassaOpen] = useState(false);
+  const [confirmar, setConfirmar] = useState(null); // { itens: [...] }
 
   const mk = monthKey(ano, mes);
   const rotuloQuitado = tipo === 'pagar' ? ['Pago', 'Não pago'] : ['Recebido', 'Não recebido'];
@@ -1335,29 +1462,6 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
         </div>
       </div>
 
-      <Card className="p-4 mb-4">
-        <SectionTitle
-          icon={tipo === 'pagar' ? 'ArrowUpCircle' : 'ArrowDownCircle'}
-          title={tipo === 'pagar' ? 'Previsão de despesas' : 'Previsão de receita'}
-          subtitle={modoFiltro === 'periodo' ? `${formatDateBR(dataInicio)} a ${formatDateBR(dataFim)}` : `${MESES[mes - 1]} ${ano}`}
-        />
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {previsaoOrdenada.map((l) => (
-            <div key={l.categoria} className="bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
-              <div className="text-[11px] text-slate-500 truncate">{l.categoria}</div>
-              <div className="text-sm font-semibold text-slate-700 pf-num">{formatBRL(l.valor)}</div>
-              <div className="h-1 bg-slate-200/70 rounded-full mt-1.5 overflow-hidden">
-                <div className={`h-full rounded-full ${tipo === 'pagar' ? 'bg-rose-400' : 'bg-emerald-500'}`} style={{ width: `${totalMes ? (l.valor / totalMes) * 100 : 0}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-          <span className="text-sm font-medium text-slate-500">Total do período</span>
-          <span className={`text-lg font-semibold pf-num ${corValor}`}>{formatBRL(totalMes)}</span>
-        </div>
-      </Card>
-
       {resumoFiltro.length > 0 && (
         <Card className="p-4 mb-4">
           <div className="flex items-center justify-between">
@@ -1468,7 +1572,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
                           <button onClick={() => openDuplicar(t)} title="Duplicar" className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
                             <Icon name="Copy" size={13} />
                           </button>
-                          <button onClick={() => onDelete(t)} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
+                          <button onClick={() => setConfirmar({ itens: [t] })} title="Excluir" className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50">
                             <Icon name="Trash2" size={13} />
                           </button>
                         </div>
@@ -1492,12 +1596,44 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
                 {rotuloQuitado[0].toLowerCase()} {formatBRL(somaSelQuitado)} · em aberto {formatBRL(somaSel - somaSelQuitado)}
               </div>
             </div>
-            <button onClick={() => setSelecionados([])} className="shrink-0 text-xs font-medium bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl">
-              Limpar seleção
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => setMassaOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold bg-white text-slate-900 hover:bg-emerald-50 px-3 py-2 rounded-xl">
+                <Icon name="Pencil" size={13} /> Editar
+              </button>
+              <button onClick={() => setConfirmar({ itens: selVisiveis })} className="flex items-center gap-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-xl">
+                <Icon name="Trash2" size={13} /> Excluir
+              </button>
+              <button onClick={() => setSelecionados([])} title="Limpar seleção" className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20">
+                <Icon name="X" size={14} />
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      <EdicaoMassaModal
+        open={massaOpen}
+        itens={selVisiveis}
+        categorias={categorias}
+        tipo={tipo}
+        onClose={() => setMassaOpen(false)}
+        onSave={(editados) => { onEditMany(editados); setMassaOpen(false); setSelecionados([]); }}
+      />
+      <ConfirmModal
+        open={!!confirmar}
+        titulo={confirmar && confirmar.itens.length > 1 ? `Excluir ${confirmar.itens.length} lançamentos?` : 'Excluir lançamento?'}
+        texto={confirmar ? (confirmar.itens.length > 1
+          ? `Total de ${formatBRL(confirmar.itens.reduce((s, x) => s + x.valor, 0))}. Essa ação não pode ser desfeita.`
+          : `“${confirmar.itens[0].descricao}” de ${formatDateBR(confirmar.itens[0].data)} (${formatBRL(confirmar.itens[0].valor)}). Essa ação não pode ser desfeita.`) : ''}
+        confirmar={confirmar && confirmar.itens.length > 1 ? `Excluir ${confirmar.itens.length}` : 'Excluir'}
+        onClose={() => setConfirmar(null)}
+        onConfirm={() => {
+          const ids = confirmar.itens.map((x) => x.id);
+          if (ids.length === 1) onDelete(confirmar.itens[0]); else onDeleteMany(ids);
+          setSelecionados((s) => s.filter((id) => !ids.includes(id)));
+          setConfirmar(null);
+        }}
+      />
 
       <TransactionModal
         open={modalOpen}
@@ -2496,6 +2632,87 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
 
 /* --------------------------------- Cartão de Crédito ------------------------ */
 
+const PALETA_CATEGORIAS = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#f43f5e', '#14b8a6', '#ec4899', '#64748b', '#84cc16', '#6366f1', '#ef4444', '#06b6d4', '#a855f7', '#22c55e', '#eab308', '#3b82f6', '#d946ef', '#78716c', '#94a3b8'];
+const corCategoria = (c) => PALETA_CATEGORIAS[Math.max(CATEGORIAS_PAGAR.indexOf(c), 0) % PALETA_CATEGORIAS.length];
+
+function CategoriaChip({ categoria, onClick, grande }) {
+  const cor = corCategoria(categoria);
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 max-w-full rounded-full border transition active:scale-[0.98] ${grande ? 'px-3 py-2 text-[13px]' : 'px-2.5 py-1 text-xs'} hover:shadow-sm`}
+      style={{ borderColor: `${cor}55`, background: `${cor}12`, color: '#334155' }}
+    >
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }} />
+      <span className="truncate font-medium">{categoria}</span>
+      <Icon name="ChevronDown" size={12} className="shrink-0 text-slate-400" />
+    </button>
+  );
+}
+
+// Escolha de categoria em tela cheia (botões grandes, fácil no celular).
+function CategoriaSheet({ item, iguais, onClose, onEscolher }) {
+  const [busca, setBusca] = useState('');
+  const [aplicarIguais, setAplicarIguais] = useState(true);
+  const chaveItem = item ? `${item.id || ''}|${item.descricao}|${item.valor}|${item.data}` : '';
+  useEffect(() => { setBusca(''); setAplicarIguais(true); }, [chaveItem]);
+  if (!item) return null;
+  const termo = busca.trim().toLowerCase();
+  const lista = CATEGORIAS_PAGAR.filter((c) => !termo || c.toLowerCase().includes(termo));
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="p-5 pb-3 border-b border-slate-100">
+          <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] text-slate-400 uppercase tracking-wider">Categoria da compra</div>
+              <div className="text-sm font-semibold text-slate-800 truncate">{item.descricao}</div>
+              <div className="text-xs text-slate-500 pf-num">{item.data ? `${formatDateBR(item.data)} · ` : ''}{formatBRL(item.valor)}</div>
+            </div>
+            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 shrink-0">
+              <Icon name="X" size={18} />
+            </button>
+          </div>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar categoria..."
+            className="w-full mt-3 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+          />
+          {iguais > 0 && (
+            <label className="flex items-center gap-2 mt-3 text-xs text-slate-600 bg-sky-50 rounded-xl px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" checked={aplicarIguais} onChange={(e) => setAplicarIguais(e.target.checked)} className="accent-emerald-600 w-4 h-4" />
+              Aplicar também às outras {iguais} compra{iguais > 1 ? 's' : ''} iguais a esta
+            </label>
+          )}
+        </div>
+        <div className="p-4 overflow-y-auto pf-scroll">
+          <div className="grid grid-cols-2 gap-2">
+            {lista.map((c) => {
+              const atual = c === item.categoria;
+              const cor = corCategoria(c);
+              return (
+                <button
+                  key={c}
+                  onClick={() => onEscolher(c, iguais > 0 && aplicarIguais)}
+                  className={`flex items-center gap-2 text-left rounded-xl border px-3 py-3 text-[13px] font-medium transition active:scale-[0.98] ${atual ? 'text-white shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'}`}
+                  style={atual ? { background: cor, borderColor: cor } : {}}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: atual ? '#fff' : cor }} />
+                  <span className="leading-tight">{c}</span>
+                  {atual && <Icon name="Check" size={14} className="ml-auto shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+          {lista.length === 0 && <div className="text-center text-xs text-slate-400 py-6">Nenhuma categoria com esse nome.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprender }) {
   const agora = new Date();
   const [mesFatura, setMesFatura] = useState(agora.getMonth() + 1);
@@ -2510,6 +2727,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
   const [linhas, setLinhas] = useState([]); // preview editável
   const [erro, setErro] = useState(null);
   const [carregando, setCarregando] = useState(false);
+  const [sheetIdx, setSheetIdx] = useState(null);
   const fileRef = useRef(null);
 
   const mkFatura = monthKey(anoFatura, mesFatura);
@@ -2702,7 +2920,34 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
                 Confira e ajuste a categoria de cada linha antes de confirmar — compras que já apareceram antes usam a categoria do histórico; as demais têm sugestão automática e podem errar.
                 {qtdCorrespondentes > 0 && <> {qtdCorrespondentes} linha{qtdCorrespondentes !== 1 ? 's' : ''} já bate{qtdCorrespondentes === 1 ? '' : 'm'} com o que você já tinha lançado.</>}
               </div>
-              <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
+              <div className="sm:hidden space-y-2 max-h-[60vh] overflow-y-auto pf-scroll">
+                {linhas.map((l, i) => (
+                  <div key={l.id} className={`rounded-xl border p-3 ${!l.incluir ? 'opacity-50 border-slate-100' : 'border-slate-200'} ${l.correspondeId ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={l.incluir}
+                        onChange={(e) => setLinhas((prev) => prev.map((x, xi) => (xi === i ? { ...x, incluir: e.target.checked } : x)))}
+                        className="accent-emerald-600 w-5 h-5 mt-0.5 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-[13px] font-medium text-slate-700 leading-snug break-words">{l.descricao}</div>
+                          <div className={`text-sm font-semibold whitespace-nowrap pf-num ${l.valorOriginal < 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatBRL(l.valorAbs)}</div>
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {l.data ? formatDateBR(l.data) : <span className="text-red-400">data inválida</span>}
+                          {l.valorOriginal < 0 && ' · crédito'}
+                          {l.correspondeId && <span className="text-emerald-600"> · já lançado</span>}
+                          {l.pelaHistoria && <span className="text-sky-600"> · pelo histórico</span>}
+                        </div>
+                        <div className="mt-2"><CategoriaChip grande categoria={l.categoria} onClick={() => setSheetIdx(i)} /></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden sm:block overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white">
                     <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
@@ -2742,13 +2987,8 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
                           {formatBRL(l.valorAbs)}{l.valorOriginal < 0 && ' (crédito)'}
                         </td>
                         <td className="px-2 py-1.5">
-                          <select
-                            value={l.categoria}
-                            onChange={(e) => setLinhas((prev) => prev.map((x, xi) => (xi === i ? { ...x, categoria: e.target.value } : x)))}
-                            className="border border-slate-200 rounded-lg px-1.5 py-1 text-xs bg-white max-w-[150px]"
-                          >
-                            {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
-                          </select>
+                          <CategoriaChip categoria={l.categoria} onClick={() => setSheetIdx(i)} />
+
                         </td>
                       </tr>
                     ))}
@@ -2782,6 +3022,16 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
           )}
         </div>
       )}
+      <CategoriaSheet
+        item={sheetIdx != null ? { descricao: linhas[sheetIdx]?.descricao, valor: linhas[sheetIdx]?.valorAbs, data: linhas[sheetIdx]?.data, categoria: linhas[sheetIdx]?.categoria } : null}
+        iguais={sheetIdx != null ? linhas.filter((x, xi) => xi !== sheetIdx && normalizarDescricao(x.descricao) === normalizarDescricao(linhas[sheetIdx]?.descricao)).length : 0}
+        onClose={() => setSheetIdx(null)}
+        onEscolher={(categoria, aplicarIguais) => {
+          const alvo = normalizarDescricao(linhas[sheetIdx].descricao);
+          setLinhas((prev) => prev.map((x, xi) => (xi === sheetIdx || (aplicarIguais && normalizarDescricao(x.descricao) === alvo) ? { ...x, categoria } : x)));
+          setSheetIdx(null);
+        }}
+      />
     </Card>
   );
 }
@@ -2894,8 +3144,11 @@ function LancamentoCartaoModal({ open, onClose, onSave, historico }) {
   );
 }
 
-function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, onAddManual, onReplicar, onEditCategoria, onDelete, onClearMes }) {
+function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, onAddManual, onReplicar, onEditCategoria, onEditCategorias, agrupadosDoMes, onDelete, onClearMes }) {
   const [modalManualOpen, setModalManualOpen] = useState(false);
+  const [sheetItem, setSheetItem] = useState(null);
+  const [limparOpen, setLimparOpen] = useState(false);
+  const [limparContas, setLimparContas] = useState(true);
   const now = new Date();
   const [mes, setMes] = usePersistentState('cartao:mes', now.getMonth() + 1);
   const [ano, setAno] = usePersistentState('cartao:ano', now.getFullYear());
@@ -2969,9 +3222,14 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
       .sort((a, b) => Math.max(b.orcado, b.realizado) - Math.max(a.orcado, a.realizado));
   }, [doMes, orcamentos, mk]);
 
-  const limparMes = () => {
-    const msg = `Isso vai apagar os ${doMes.length} lançamentos de cartão da fatura de ${MESES[mes - 1]} ${ano} (${formatBRL(totalMes)}). Os outros meses e os lançamentos de Contas a Pagar não são afetados. Continuar?`;
-    if (window.confirm && window.confirm(msg)) onClearMes(mk);
+  const agrupados = agrupadosDoMes ? agrupadosDoMes(mk) : [];
+  const limparMes = () => { setLimparContas(true); setLimparOpen(true); };
+  const iguaisNoMes = (item) => (item ? doMes.filter((x) => x.id !== item.id && normalizarDescricao(x.descricao) === normalizarDescricao(item.descricao)) : []);
+  const escolherCategoria = (categoria, aplicarIguais) => {
+    const alvo = [sheetItem, ...(aplicarIguais ? iguaisNoMes(sheetItem) : [])];
+    onEditCategorias(alvo.map((x) => ({ id: x.id, categoria })));
+    onAprender([{ descricao: sheetItem.descricao, categoria }]);
+    setSheetItem(null);
   };
 
   return (
@@ -3073,7 +3331,36 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
         ) : filtrados.length === 0 ? (
           <EmptyState text="Nenhum lançamento com esses filtros." />
         ) : (
-          <div className="overflow-x-auto pf-scroll mt-3">
+          <>
+          <div className="sm:hidden mt-3 px-3 space-y-2 pb-3">
+            {filtrados.map((t) => (
+              <div key={t.id} className={`rounded-2xl border p-3 ${t.confirmado === false ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-slate-700 leading-snug break-words">{t.descricao}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5 pf-num">
+                      {formatDateBR(t.data)}
+                      {t.data.slice(0, 7) !== mk && ` · compra de ${MESES[Number(t.data.slice(5, 7)) - 1].slice(0, 3)}`}
+                      {t.confirmado === false && <span className="text-amber-600"> · aguardando extrato</span>}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-red-500 whitespace-nowrap pf-num">{formatBRL(t.valor)}</div>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-2.5">
+                  <CategoriaChip grande categoria={t.categoria} onClick={() => setSheetItem(t)} />
+                  <button onClick={() => onDelete(t)} title="Excluir" className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0">
+                    <Icon name="Trash2" size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {temFiltro && (
+              <div className="flex justify-between text-sm font-semibold text-slate-700 px-1 pt-1">
+                <span>Total filtrado</span><span className="text-red-500 pf-num">{formatBRL(totalFiltrado)}</span>
+              </div>
+            )}
+          </div>
+          <div className="hidden sm:block overflow-x-auto pf-scroll mt-3">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-t border-b border-slate-100">
@@ -3102,16 +3389,8 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
                       )}
                     </td>
                     <td className="px-2 py-2.5">
-                      <select
-                        value={t.categoria}
-                        onChange={(e) => {
-                          onEditCategoria({ ...t, categoria: e.target.value });
-                          onAprender([{ descricao: t.descricao, categoria: e.target.value }]);
-                        }}
-                        className="border border-slate-200 rounded-lg px-1.5 py-1 text-xs bg-white"
-                      >
-                        {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <CategoriaChip categoria={t.categoria} onClick={() => setSheetItem(t)} />
+
                     </td>
                     <td className="px-2 py-2.5 text-right font-medium text-red-500 whitespace-nowrap pf-num">{formatBRL(t.valor)}</td>
                     <td className="px-2 py-2.5 text-right">
@@ -3133,8 +3412,41 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
               )}
             </table>
           </div>
+          </>
         )}
       </Card>
+
+      <CategoriaSheet
+        item={sheetItem}
+        iguais={iguaisNoMes(sheetItem).length}
+        onClose={() => setSheetItem(null)}
+        onEscolher={escolherCategoria}
+      />
+
+      {limparOpen && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={() => setLimparOpen(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-3"><Icon name="Trash2" size={18} /></div>
+            <h3 className="text-base font-semibold text-slate-800">Limpar a fatura de {MESES[mes - 1]} {ano}?</h3>
+            <p className="text-sm text-slate-500 mt-1 pf-num">Vai apagar as <b>{doMes.length} compras</b> do cartão desta fatura ({formatBRL(totalMes)}). Os outros meses não são afetados.</p>
+            {agrupados.length > 0 ? (
+              <label className={`flex items-start gap-2.5 mt-4 rounded-xl border px-3 py-3 cursor-pointer ${limparContas ? 'border-rose-200 bg-rose-50/50' : 'border-slate-200'}`}>
+                <input type="checkbox" checked={limparContas} onChange={(e) => setLimparContas(e.target.checked)} className="accent-rose-600 w-4 h-4 mt-0.5" />
+                <span className="text-xs text-slate-600">
+                  <b className="text-slate-700">Também excluir de Contas a Pagar</b> os {agrupados.length} lançamentos desta fatura ({formatBRL(agrupados.reduce((s, l) => s + l.valor, 0))}):
+                  <span className="block text-[11px] text-slate-400 mt-1">{agrupados.map((l) => l.descricao.replace('Cartão - ', '')).join(', ')}</span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-[11px] text-slate-400 mt-3">Esta fatura não tem lançamentos agrupados em Contas a Pagar.</p>
+            )}
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <button onClick={() => setLimparOpen(false)} className="py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">Cancelar</button>
+              <button onClick={() => { onClearMes(mk, limparContas && agrupados.length > 0); setLimparOpen(false); }} className="py-2.5 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700">Limpar fatura</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card className="p-4">
         <SectionTitle icon="TrendingUp" title="Comparativo por categoria" subtitle="Últimos 6 meses · top 5 categorias no cartão" />
@@ -4956,10 +5268,19 @@ function App() {
   const [ultimaSincronia, setUltimaSincronia] = useState(null);
   const [pendentes, setPendentes] = useState([]); // alterações que falharam ao salvar, aguardando nova tentativa
 
+  // Gravações em andamento e momento da última alteração local: uma atualização automática
+  // que começou antes de uma alteração (ou durante uma gravação) é descartada, para não
+  // trazer de volta um lançamento que acabou de ser excluído/editado.
+  const salvandoRef = useRef(0);
+  const ultimaAlteracaoRef = useRef(0);
+
   const carregarDados = useCallback(async (silencioso = false) => {
+    if (silencioso && salvandoRef.current > 0) return;
     if (!silencioso) setLoading(true);
+    const inicio = Date.now();
     try {
       const dados = await sbGetAll();
+      if (silencioso && (salvandoRef.current > 0 || ultimaAlteracaoRef.current >= inicio)) return;
       if (dados.lancamentos) setLancamentos(dados.lancamentos);
       if (dados.orcamentos) setOrcamentos(dados.orcamentos);
       if (dados.config) setConfig(dados.config);
@@ -5013,11 +5334,16 @@ function App() {
   const persist = useCallback(async (key, value, setter, tentativa = 0) => {
     setter(value);
     setSavingState('saving');
+    ultimaAlteracaoRef.current = Date.now();
+    salvandoRef.current += 1;
     try {
       await sbSet(key, value);
+      salvandoRef.current -= 1;
+      ultimaAlteracaoRef.current = Date.now();
       flashSaved();
       setPendentes((prev) => prev.filter((p) => p.key !== key));
     } catch (e) {
+      salvandoRef.current -= 1;
       // eslint-disable-next-line no-console
       console.error(`Falha ao salvar "${key}" (tentativa ${tentativa + 1}/3):`, e);
       if (tentativa < 2) {
@@ -5049,9 +5375,15 @@ function App() {
   const editLancamento = (editado) => persist('lancamentos', lancamentos.map((t) => (t.id === editado.id ? editado : t)), setLancamentos);
   const toggleQuitado = (t) => persist('lancamentos', lancamentos.map((x) => (x.id === t.id ? { ...x, quitado: !x.quitado } : x)), setLancamentos);
   const duplicar = (t) => persist('lancamentos', [...lancamentos, { ...t, id: uid(), data: todayStr(), quitado: false }], setLancamentos);
-  const excluir = (t) => {
-    if (window.confirm && !window.confirm(`Excluir o lançamento "${t.descricao}"?`)) return;
-    persist('lancamentos', lancamentos.filter((x) => x.id !== t.id), setLancamentos);
+  // A confirmação é feita na própria tela de contas (janela do app)
+  const excluir = (t) => persist('lancamentos', lancamentos.filter((x) => x.id !== t.id), setLancamentos);
+  const excluirVarios = (ids) => {
+    const set = new Set(ids);
+    persist('lancamentos', lancamentos.filter((x) => !set.has(x.id)), setLancamentos);
+  };
+  const editarVarios = (editados) => {
+    const mapa = new Map(editados.map((t) => [t.id, t]));
+    persist('lancamentos', lancamentos.map((t) => mapa.get(t.id) || t), setLancamentos);
   };
 
   const setOrcamento = (categoria, mk, valor) => {
@@ -5080,37 +5412,53 @@ function App() {
     persist('cartaoTransacoes', [...base, ...novas], setCartaoTransacoes);
   };
   const addManualCartao = (entry) => persist('cartaoTransacoes', [...cartaoTransacoes, entry], setCartaoTransacoes);
-  const editarCategoriaCartao = (editada) => {
-    const anterior = cartaoTransacoes.find((t) => t.id === editada.id);
-    persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.id === editada.id ? editada : t)), setCartaoTransacoes);
-    if (!anterior || anterior.categoria === editada.categoria) return;
-    // Se a fatura já foi lançada em Contas a Pagar, move o valor da compra entre os lançamentos agrupados.
-    const mk = anterior.mesFatura || anterior.data.slice(0, 7);
-    const ehDoGrupo = (l, categoria) => l.tipo === 'pagar' && (l.grupoCartao
-      ? l.grupoCartao.mk === mk && l.grupoCartao.categoria === categoria
-      : l.descricao === `Cartão - ${categoria}` && l.data.slice(0, 7) === mk);
-    const origem = lancamentos.find((l) => ehDoGrupo(l, anterior.categoria));
-    if (!origem) return;
-    const valor = anterior.valor;
-    const destino = lancamentos.find((l) => ehDoGrupo(l, editada.categoria));
+  // Lançamentos agrupados ("Cartão - categoria") de uma fatura em Contas a Pagar
+  const ehGrupoCartao = (l, mk, categoria) => l.tipo === 'pagar' && (l.grupoCartao
+    ? l.grupoCartao.mk === mk && (categoria == null || l.grupoCartao.categoria === categoria)
+    : /^Cartão - /.test(l.descricao || '') && l.data.slice(0, 7) === mk && (categoria == null || l.descricao === `Cartão - ${categoria}`));
+
+  // Troca a categoria de uma ou mais compras. Se a fatura já foi lançada em Contas a Pagar,
+  // move o valor entre os lançamentos agrupados (cria o da categoria nova se não existir).
+  const editarCategoriasCartao = (mudancas) => {
+    const mapa = new Map(mudancas.map((m) => [m.id, m.categoria]));
     const arred = (v) => Math.round(v * 100) / 100;
-    let lista = lancamentos
-      .map((l) => {
-        if (l.id === origem.id) return { ...l, valor: arred(l.valor - valor) };
-        if (destino && l.id === destino.id) return { ...l, valor: arred(l.valor + valor) };
-        return l;
-      })
-      .filter((l) => !(l.id === origem.id && l.valor <= 0.005));
-    if (!destino) {
-      lista = [...lista, {
-        id: uid(), tipo: 'pagar', descricao: `Cartão - ${editada.categoria}`, categoria: editada.categoria,
-        valor: arred(valor), data: `${mk}-01`, quitado: !!origem.quitado, grupoCartao: { mk, categoria: editada.categoria },
-      }];
-    }
-    persist('lancamentos', lista, setLancamentos);
+    let lista = lancamentos;
+    let mexeuContas = false;
+    cartaoTransacoes.forEach((anterior) => {
+      const nova = mapa.get(anterior.id);
+      if (!nova || nova === anterior.categoria) return;
+      const mk = anterior.mesFatura || anterior.data.slice(0, 7);
+      const origem = lista.find((l) => ehGrupoCartao(l, mk, anterior.categoria));
+      if (!origem) return;
+      const destino = lista.find((l) => ehGrupoCartao(l, mk, nova));
+      lista = lista
+        .map((l) => {
+          if (l.id === origem.id) return { ...l, valor: arred(l.valor - anterior.valor) };
+          if (destino && l.id === destino.id) return { ...l, valor: arred(l.valor + anterior.valor) };
+          return l;
+        })
+        .filter((l) => !(l.id === origem.id && l.valor <= 0.005));
+      if (!destino) {
+        lista = [...lista, {
+          id: uid(), tipo: 'pagar', descricao: `Cartão - ${nova}`, categoria: nova,
+          valor: arred(anterior.valor), data: `${mk}-01`, quitado: !!origem.quitado, grupoCartao: { mk, categoria: nova },
+        }];
+      }
+      mexeuContas = true;
+    });
+    persist('cartaoTransacoes', cartaoTransacoes.map((t) => (mapa.has(t.id) ? { ...t, categoria: mapa.get(t.id) } : t)), setCartaoTransacoes);
+    if (mexeuContas) persist('lancamentos', lista, setLancamentos);
   };
+  const editarCategoriaCartao = (editada) => editarCategoriasCartao([{ id: editada.id, categoria: editada.categoria }]);
   const excluirCartao = (t) => persist('cartaoTransacoes', cartaoTransacoes.filter((x) => x.id !== t.id), setCartaoTransacoes);
-  const limparCartaoMes = (mk) => persist('cartaoTransacoes', cartaoTransacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) !== mk), setCartaoTransacoes);
+  const agrupadosDoMes = (mk) => lancamentos.filter((l) => ehGrupoCartao(l, mk, null));
+  const limparCartaoMes = (mk, tambemContas) => {
+    persist('cartaoTransacoes', cartaoTransacoes.filter((t) => (t.mesFatura || t.data.slice(0, 7)) !== mk), setCartaoTransacoes);
+    if (tambemContas) {
+      const ids = new Set(agrupadosDoMes(mk).map((l) => l.id));
+      if (ids.size > 0) persist('lancamentos', lancamentos.filter((l) => !ids.has(l.id)), setLancamentos);
+    }
+  };
   const replicarCartaoEmContasPagar = (linhasPorCategoria, mk) => {
     const novosLancamentos = linhasPorCategoria.map((l) => ({
       id: uid(), tipo: 'pagar', descricao: `Cartão - ${l.categoria}`, categoria: l.categoria,
@@ -5250,6 +5598,8 @@ function App() {
                 lancamentos={lancamentos}
                 onAdd={addLancamentos}
                 onEdit={editLancamento}
+                onEditMany={editarVarios}
+                onDeleteMany={excluirVarios}
                 onToggleQuitado={toggleQuitado}
                 onDuplicate={duplicar}
                 onDelete={excluir}
@@ -5263,6 +5613,8 @@ function App() {
                 cartaoTransacoes={cartaoTransacoes}
                 onAdd={addLancamentos}
                 onEdit={editLancamento}
+                onEditMany={editarVarios}
+                onDeleteMany={excluirVarios}
                 onToggleQuitado={toggleQuitado}
                 onDuplicate={duplicar}
                 onDelete={excluir}
@@ -5278,6 +5630,8 @@ function App() {
                 onAddManual={addManualCartao}
                 onReplicar={replicarCartaoEmContasPagar}
                 onEditCategoria={editarCategoriaCartao}
+                onEditCategorias={editarCategoriasCartao}
+                agrupadosDoMes={agrupadosDoMes}
                 onDelete={excluirCartao}
                 onClearMes={limparCartaoMes}
               />
