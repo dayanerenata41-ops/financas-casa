@@ -253,25 +253,63 @@ function GraficoAnual({ dados, mesDestaque }) {
 
 /* ----------------------------- Constantes ----------------------------- */
 
-const CATEGORIAS_RECEBER = ['Receitas Day', 'Receitas Ycaro', 'Extras', 'Estornos', 'Resgates', 'Desconsiderar'];
+// Listas padrão. As categorias podem ser editadas no app (ficam salvas em config.categorias);
+// aplicarCategorias() troca estas listas pelas salvas.
+let CATEGORIAS_RECEBER = ['Receitas Day', 'Receitas Ycaro', 'Extras', 'Estornos', 'Resgates', 'Desconsiderar'];
 
-const CATEGORIAS_PAGAR = [
+let CATEGORIAS_PAGAR = [
   'Alimentação Casa', 'Alimentação fora + Lazer', 'Combustível', 'Contas de Consumo',
   'Despesas Carro/Moto', 'Despesas com Aluguel', 'Despesas Gerais Casa', 'Despesas Lorena',
   'Extras Ycaro', 'Extras Day', 'Reserva de Emergência', 'Viagens', 'Financiamentos',
-  'Investimentos', 'Casamento', 'Impostos', 'Dízimo', 'Abatimento Casa', 'Desconsiderar',
+  'Investimentos', 'Casamento', 'Impostos', 'Dízimo', 'Abatimento Casa', 'Pingo', 'Desconsiderar',
 ];
 
 /* --------------------------------- DRE ------------------------------------ */
 
-const DRE_RECEITAS = ['Receitas Day', 'Receitas Ycaro'];
-const DRE_DESPESAS = [
+let DRE_RECEITAS = ['Receitas Day', 'Receitas Ycaro'];
+let DRE_DESPESAS = [
   'Alimentação Casa', 'Alimentação fora + Lazer', 'Combustível', 'Contas de Consumo',
   'Despesas Carro/Moto', 'Despesas com Aluguel', 'Despesas Gerais Casa', 'Despesas Lorena',
-  'Extras Ycaro', 'Extras Day', 'Financiamentos', 'Casamento', 'Impostos',
+  'Extras Ycaro', 'Extras Day', 'Financiamentos', 'Casamento', 'Impostos', 'Pingo',
 ];
-const DRE_ENTRADAS_EXTRAS = ['Extras'];
-const DRE_PAGAMENTOS_EXTRAS = ['Abatimento Casa', 'Investimentos', 'Viagens', 'Dízimo', 'Reserva de Emergência'];
+let DRE_ENTRADAS_EXTRAS = ['Extras'];
+let DRE_PAGAMENTOS_EXTRAS = ['Abatimento Casa', 'Investimentos', 'Viagens', 'Dízimo', 'Reserva de Emergência'];
+
+// Onde cada categoria entra no DRE: receitas | entradas | despesas | pagamentos | fora
+const GRUPOS_DRE_PADRAO = {};
+[...CATEGORIAS_PAGAR, ...CATEGORIAS_RECEBER].forEach((c) => { GRUPOS_DRE_PADRAO[c] = 'fora'; });
+DRE_RECEITAS.forEach((c) => { GRUPOS_DRE_PADRAO[c] = 'receitas'; });
+DRE_ENTRADAS_EXTRAS.forEach((c) => { GRUPOS_DRE_PADRAO[c] = 'entradas'; });
+DRE_DESPESAS.forEach((c) => { GRUPOS_DRE_PADRAO[c] = 'despesas'; });
+DRE_PAGAMENTOS_EXTRAS.forEach((c) => { GRUPOS_DRE_PADRAO[c] = 'pagamentos'; });
+const GRUPOS_DRE = {
+  pagar: [['despesas', 'Despesas'], ['pagamentos', 'Pagamentos extras'], ['fora', 'Fora do DRE']],
+  receber: [['receitas', 'Receitas'], ['entradas', 'Entradas extras'], ['fora', 'Fora do DRE']],
+};
+const CATEGORIAS_PADRAO = {
+  pagar: CATEGORIAS_PAGAR, receber: CATEGORIAS_RECEBER,
+  dre: [DRE_RECEITAS, DRE_DESPESAS, DRE_ENTRADAS_EXTRAS, DRE_PAGAMENTOS_EXTRAS],
+};
+
+function gruposDasCategorias(cat) {
+  return { ...GRUPOS_DRE_PADRAO, ...(cat?.grupos || {}) };
+}
+
+function aplicarCategorias(cat) {
+  if (!cat || !Array.isArray(cat.pagar) || !Array.isArray(cat.receber)) {
+    CATEGORIAS_PAGAR = CATEGORIAS_PADRAO.pagar;
+    CATEGORIAS_RECEBER = CATEGORIAS_PADRAO.receber;
+    [DRE_RECEITAS, DRE_DESPESAS, DRE_ENTRADAS_EXTRAS, DRE_PAGAMENTOS_EXTRAS] = CATEGORIAS_PADRAO.dre;
+    return;
+  }
+  const grupos = gruposDasCategorias(cat);
+  CATEGORIAS_PAGAR = [...cat.pagar];
+  CATEGORIAS_RECEBER = [...cat.receber];
+  DRE_RECEITAS = cat.receber.filter((c) => grupos[c] === 'receitas');
+  DRE_ENTRADAS_EXTRAS = cat.receber.filter((c) => grupos[c] === 'entradas');
+  DRE_DESPESAS = cat.pagar.filter((c) => grupos[c] === 'despesas');
+  DRE_PAGAMENTOS_EXTRAS = cat.pagar.filter((c) => grupos[c] === 'pagamentos');
+}
 
 function construirLinhasDre(categorias, tipo, dados, passaFiltro, orcamentos, mk) {
   return categorias
@@ -575,7 +613,7 @@ const REGRAS_CATEGORIA = [
 
 function sugerirCategoria(descricao) {
   const found = REGRAS_CATEGORIA.find((r) => r.padrao.test(descricao || ''));
-  return found ? found.categoria : CATEGORIAS_PAGAR[0];
+  return found && CATEGORIAS_PAGAR.includes(found.categoria) ? found.categoria : CATEGORIAS_PAGAR[0];
 }
 
 async function lerArquivoExtrato(file) {
@@ -1269,7 +1307,162 @@ function EdicaoMassaModal({ open, onClose, onSave, itens, categorias, tipo }) {
   );
 }
 
-function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, onEdit, onEditMany, onToggleQuitado, onDuplicate, onDelete, onDeleteMany }) {
+// Cadastro de categorias: criar, renomear, mudar a linha do DRE e excluir (movendo os lançamentos).
+function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
+  const [nova, setNova] = useState('');
+  const [grupoNovo, setGrupoNovo] = useState(tipo === 'pagar' ? 'despesas' : 'receitas');
+  const [editando, setEditando] = useState(null); // { nome, texto }
+  const [excluindo, setExcluindo] = useState(null); // { nome, destino }
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    if (open) { setNova(''); setEditando(null); setExcluindo(null); setErro(''); }
+  }, [open]);
+  if (!open) return null;
+
+  const grupos = gerenciar.grupos;
+  const opcoesGrupo = GRUPOS_DRE[tipo];
+  const nomeLivre = (nome, ignorar) => {
+    const n = nome.trim();
+    if (!n) { setErro('Digite o nome da categoria.'); return false; }
+    if (categorias.some((c) => c !== ignorar && c.toLowerCase() === n.toLowerCase())) { setErro(`Já existe a categoria "${n}".`); return false; }
+    setErro('');
+    return true;
+  };
+  const adicionar = () => {
+    if (!nomeLivre(nova)) return;
+    gerenciar.adicionar(tipo, nova.trim(), grupoNovo);
+    setNova('');
+  };
+  const salvarNome = () => {
+    if (!editando) return;
+    const n = editando.texto.trim();
+    if (n === editando.nome) { setEditando(null); return; }
+    if (!nomeLivre(n, editando.nome)) return;
+    gerenciar.renomear(tipo, editando.nome, n);
+    setEditando(null);
+  };
+  const confirmarExclusao = () => {
+    const usos = gerenciar.uso(tipo, excluindo.nome);
+    if (usos > 0 && !excluindo.destino) { setErro('Escolha para qual categoria mover os lançamentos.'); return; }
+    gerenciar.excluir(tipo, excluindo.nome, usos > 0 ? excluindo.destino : null);
+    setExcluindo(null);
+    setErro('');
+  };
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300';
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="p-5 pb-3 border-b border-slate-100">
+          <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-800">Categorias de {tipo === 'pagar' ? 'Contas a Pagar' : 'Contas a Receber'}</h3>
+              <p className="text-[11px] text-slate-400">{tipo === 'pagar' ? 'Também usadas no Cartão, nos orçamentos e no DRE' : 'Também usadas nos orçamentos e no DRE'}</p>
+            </div>
+            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 shrink-0">
+              <Icon name="X" size={18} />
+            </button>
+          </div>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <input
+              value={nova}
+              onChange={(e) => { setNova(e.target.value); setErro(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') adicionar(); }}
+              placeholder="Nova categoria"
+              className={`${inputCls} flex-1`}
+            />
+            <div className="flex gap-2">
+              <select value={grupoNovo} onChange={(e) => setGrupoNovo(e.target.value)} className={`${inputCls} bg-white sm:w-44`} title="Linha do DRE">
+                {opcoesGrupo.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <button onClick={adicionar} className="shrink-0 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 rounded-xl">
+                <Icon name="Plus" size={15} /> Adicionar
+              </button>
+            </div>
+          </div>
+          {erro && <div className="mt-2 text-xs text-rose-600">{erro}</div>}
+        </div>
+
+        <div className="overflow-y-auto pf-scroll p-3 space-y-1.5">
+          {categorias.map((c) => {
+            const usos = gerenciar.uso(tipo, c);
+            if (editando?.nome === c) {
+              return (
+                <div key={c} className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-2.5 flex gap-2">
+                  <input
+                    autoFocus
+                    value={editando.texto}
+                    onChange={(e) => { setEditando({ ...editando, texto: e.target.value }); setErro(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') salvarNome(); if (e.key === 'Escape') setEditando(null); }}
+                    className={`${inputCls} flex-1 bg-white`}
+                  />
+                  <button onClick={salvarNome} title="Salvar" className="w-10 shrink-0 flex items-center justify-center rounded-xl bg-emerald-600 text-white"><Icon name="Check" size={16} /></button>
+                  <button onClick={() => setEditando(null)} title="Cancelar" className="w-10 shrink-0 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Icon name="X" size={16} /></button>
+                </div>
+              );
+            }
+            if (excluindo?.nome === c) {
+              const destinos = categorias.filter((x) => x !== c);
+              return (
+                <div key={c} className="rounded-xl border border-rose-200 bg-rose-50/50 p-3">
+                  <div className="text-sm font-medium text-slate-800">Excluir "{c}"?</div>
+                  {usos > 0 ? (
+                    <>
+                      <div className="text-xs text-slate-500 mt-0.5">Ela tem {usos} {usos === 1 ? 'lançamento' : 'lançamentos'}. Para não perder nada, eles vão para a categoria:</div>
+                      <select value={excluindo.destino} onChange={(e) => { setExcluindo({ ...excluindo, destino: e.target.value }); setErro(''); }} className={`${inputCls} bg-white mt-2`}>
+                        <option value="">Escolha a categoria…</option>
+                        {destinos.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <div className="text-xs text-slate-500 mt-0.5">Ela não tem nenhum lançamento.</div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button onClick={() => { setExcluindo(null); setErro(''); }} className="py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200">Cancelar</button>
+                    <button onClick={confirmarExclusao} className="py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700">Excluir</button>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={c} className="rounded-xl border border-slate-200 px-3 py-2 flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: tipo === 'pagar' ? corCategoria(c) : '#10b981' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-slate-700 truncate">{c}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">{usos === 0 ? 'Sem lançamentos' : `${usos} ${usos === 1 ? 'lançamento' : 'lançamentos'}`} ·</span>
+                    <select
+                      value={grupos[c] || 'fora'}
+                      onChange={(e) => gerenciar.mudarGrupo(c, e.target.value)}
+                      title="Linha do DRE"
+                      className="min-w-0 text-[11px] border border-slate-200 rounded-md px-1 py-0.5 bg-white text-slate-600"
+                    >
+                      {opcoesGrupo.map(([v, l]) => <option key={v} value={v}>DRE: {l}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button onClick={() => { setEditando({ nome: c, texto: c }); setExcluindo(null); setErro(''); }} title="Renomear" className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50">
+                  <Icon name="Pencil" size={15} />
+                </button>
+                <button
+                  onClick={() => { setExcluindo({ nome: c, destino: '' }); setEditando(null); setErro(''); }}
+                  disabled={categorias.length <= 1}
+                  title="Excluir"
+                  className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30"
+                >
+                  <Icon name="Trash2" size={15} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, onEdit, onEditMany, onToggleQuitado, onDuplicate, onDelete, onDeleteMany, gerenciarCategorias }) {
   const now = new Date();
   const p = `contas:${tipo}`;
   const [mes, setMes] = usePersistentState(`${p}:mes`, now.getMonth() + 1);
@@ -1291,6 +1484,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
   const [modoModal, setModoModal] = useState('novo'); // novo | editar | duplicar
   const [massaOpen, setMassaOpen] = useState(false);
   const [confirmar, setConfirmar] = useState(null); // { itens: [...] }
+  const [categoriasOpen, setCategoriasOpen] = useState(false);
 
   const mk = monthKey(ano, mes);
   const rotuloQuitado = tipo === 'pagar' ? ['Pago', 'Não pago'] : ['Recebido', 'Não recebido'];
@@ -1433,7 +1627,35 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
           </div>
         )}
         <CategoryMultiSelect categorias={categorias} selected={categoriasSel} onChange={setCategoriasSel} />
+        {gerenciarCategorias && (
+          <button
+            onClick={() => setCategoriasOpen(true)}
+            title="Cadastrar, editar ou excluir categorias"
+            className="flex items-center gap-1.5 text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 transition"
+          >
+            <Icon name="Pencil" size={13} /> Categorias
+          </button>
+        )}
       </div>
+      {gerenciarCategorias && (
+        <CategoriasModal
+          open={categoriasOpen}
+          onClose={() => setCategoriasOpen(false)}
+          tipo={tipo}
+          categorias={categorias}
+          gerenciar={{
+            ...gerenciarCategorias,
+            excluir: (t, nome, destino) => {
+              gerenciarCategorias.excluir(t, nome, destino);
+              if (categoriasSel.includes(nome)) setCategoriasSel(categoriasSel.filter((c) => c !== nome));
+            },
+            renomear: (t, antigo, novo) => {
+              gerenciarCategorias.renomear(t, antigo, novo);
+              if (categoriasSel.includes(antigo)) setCategoriasSel(categoriasSel.map((c) => (c === antigo ? novo : c)));
+            },
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
@@ -1941,7 +2163,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
   }, [doMes, statusFiltro]);
 
   // Análise por categoria no ano
-  const todasCategoriasUnicas = useMemo(() => [...new Set([...CATEGORIAS_PAGAR, ...CATEGORIAS_RECEBER])], []);
+  const todasCategoriasUnicas = useMemo(() => [...new Set([...CATEGORIAS_PAGAR, ...CATEGORIAS_RECEBER])], [CATEGORIAS_PAGAR, CATEGORIAS_RECEBER]); // eslint-disable-line react-hooks/exhaustive-deps
   const CORES_ANALISE = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#f43f5e', '#14b8a6', '#64748b', '#ec4899'];
   const analise = useMemo(() => {
     const doAno = lancamentos.filter((t) => t.data.slice(0, 4) === String(ano) && catsAnalise.includes(t.categoria) && passaFiltroStatus(t));
@@ -2633,7 +2855,7 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
 /* --------------------------------- Cartão de Crédito ------------------------ */
 
 const PALETA_CATEGORIAS = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#f43f5e', '#14b8a6', '#ec4899', '#64748b', '#84cc16', '#6366f1', '#ef4444', '#06b6d4', '#a855f7', '#22c55e', '#eab308', '#3b82f6', '#d946ef', '#78716c', '#94a3b8'];
-const corCategoria = (c) => PALETA_CATEGORIAS[Math.max(CATEGORIAS_PAGAR.indexOf(c), 0) % PALETA_CATEGORIAS.length];
+const corCategoria = (c) => c === 'Desconsiderar' ? '#94a3b8' : PALETA_CATEGORIAS[Math.max(CATEGORIAS_PAGAR.indexOf(c), 0) % PALETA_CATEGORIAS.length];
 
 function CategoriaChip({ categoria, onClick, grande }) {
   const cor = corCategoria(categoria);
@@ -3220,7 +3442,7 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
       .map((c) => ({ categoria: c, realizado: map[c] || 0, orcado: orcamentos?.[c]?.[mk] ?? 0 }))
       .filter((l) => l.realizado > 0 || l.orcado > 0)
       .sort((a, b) => Math.max(b.orcado, b.realizado) - Math.max(a.orcado, a.realizado));
-  }, [doMes, orcamentos, mk]);
+  }, [doMes, orcamentos, mk, CATEGORIAS_PAGAR]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const agrupados = agrupadosDoMes ? agrupadosDoMes(mk) : [];
   const limparMes = () => { setLimparContas(true); setLimparOpen(true); };
@@ -5396,6 +5618,75 @@ function App() {
     persist('config', next, setConfig);
   };
 
+  // Categorias editáveis (salvas em config.categorias). Enquanto nada for editado, valem as listas padrão.
+  useMemo(() => aplicarCategorias(config.categorias), [config.categorias]);
+  const gruposCategorias = gruposDasCategorias(config.categorias);
+  const salvarCategorias = (mudanca) => {
+    const atual = { pagar: CATEGORIAS_PAGAR, receber: CATEGORIAS_RECEBER, grupos: gruposCategorias };
+    persist('config', { ...config, categorias: { ...atual, ...mudanca } }, setConfig);
+  };
+  const listaCategorias = (tipo) => (tipo === 'pagar' ? CATEGORIAS_PAGAR : CATEGORIAS_RECEBER);
+  const usoCategoria = (tipo, nome) => lancamentos.filter((l) => l.tipo === tipo && l.categoria === nome).length
+    + (tipo === 'pagar' ? cartaoTransacoes.filter((t) => t.categoria === nome).length : 0);
+  // Passa os lançamentos (e, em Contas a Pagar, as compras do cartão) de uma categoria para outra.
+  // Sem destino, só tira a categoria do histórico de sugestões do cartão.
+  const trocarCategoria = (tipo, de, para) => {
+    if (para) {
+      const ehDe = (l) => l.tipo === tipo && l.categoria === de;
+      const grupoDe = (l) => tipo === 'pagar' && l.tipo === 'pagar' && (l.grupoCartao ? l.grupoCartao.categoria === de : l.descricao === `Cartão - ${de}`);
+      if (lancamentos.some((l) => ehDe(l) || grupoDe(l))) {
+        persist('lancamentos', lancamentos.map((l) => {
+          if (!ehDe(l) && !grupoDe(l)) return l;
+          const n = { ...l };
+          if (ehDe(l)) n.categoria = para;
+          if (grupoDe(l)) {
+            if (l.descricao === `Cartão - ${de}`) n.descricao = `Cartão - ${para}`;
+            if (l.grupoCartao) n.grupoCartao = { ...l.grupoCartao, categoria: para };
+          }
+          return n;
+        }), setLancamentos);
+      }
+      if (tipo === 'pagar' && cartaoTransacoes.some((t) => t.categoria === de)) {
+        persist('cartaoTransacoes', cartaoTransacoes.map((t) => (t.categoria === de ? { ...t, categoria: para } : t)), setCartaoTransacoes);
+      }
+    }
+    if (tipo === 'pagar' && Object.values(cartaoHistorico).includes(de)) {
+      const novo = {};
+      Object.entries(cartaoHistorico).forEach(([k, v]) => {
+        if (v !== de) novo[k] = v;
+        else if (para) novo[k] = para;
+      });
+      persist('cartaoHistorico', novo, setCartaoHistorico);
+    }
+  };
+  const gerenciarCategorias = {
+    grupos: gruposCategorias,
+    uso: usoCategoria,
+    adicionar: (tipo, nome, grupo) => {
+      const lista = listaCategorias(tipo);
+      const pos = lista.indexOf('Desconsiderar');
+      const nova = pos >= 0 ? [...lista.slice(0, pos), nome, ...lista.slice(pos)] : [...lista, nome];
+      salvarCategorias({ [tipo]: nova, grupos: { ...gruposCategorias, [nome]: grupo } });
+    },
+    mudarGrupo: (nome, grupo) => salvarCategorias({ grupos: { ...gruposCategorias, [nome]: grupo } }),
+    renomear: (tipo, antigo, novo) => {
+      const outraTem = listaCategorias(tipo === 'pagar' ? 'receber' : 'pagar').includes(antigo);
+      trocarCategoria(tipo, antigo, novo);
+      if (orcamentos[antigo] && !outraTem) {
+        const next = { ...orcamentos, [novo]: { ...(orcamentos[novo] || {}), ...orcamentos[antigo] } };
+        delete next[antigo];
+        persist('orcamentos', next, setOrcamentos);
+      }
+      const grupos = { ...gruposCategorias, [novo]: gruposCategorias[antigo] || (tipo === 'pagar' ? 'despesas' : 'receitas') };
+      if (!outraTem) delete grupos[antigo];
+      salvarCategorias({ [tipo]: listaCategorias(tipo).map((c) => (c === antigo ? novo : c)), grupos });
+    },
+    excluir: (tipo, nome, destino) => {
+      trocarCategoria(tipo, nome, destino);
+      salvarCategorias({ [tipo]: listaCategorias(tipo).filter((c) => c !== nome) });
+    },
+  };
+
   const addMeta = (meta) => persist('metas', [...metas, meta], setMetas);
   const editMeta = (editada) => persist('metas', metas.map((m) => (m.id === editada.id ? editada : m)), setMetas);
   const deleteMeta = (meta) => persist('metas', metas.filter((m) => m.id !== meta.id), setMetas);
@@ -5603,6 +5894,7 @@ function App() {
                 onToggleQuitado={toggleQuitado}
                 onDuplicate={duplicar}
                 onDelete={excluir}
+                gerenciarCategorias={gerenciarCategorias}
               />
             )}
             {tab === 'pagar' && (
@@ -5618,6 +5910,7 @@ function App() {
                 onToggleQuitado={toggleQuitado}
                 onDuplicate={duplicar}
                 onDelete={excluir}
+                gerenciarCategorias={gerenciarCategorias}
               />
             )}
             {tab === 'cartao' && (
