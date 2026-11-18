@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
 <title>Finanças da Casa</title>
-<meta name="theme-color" content="#059669" />
+<meta name="theme-color" content="#0C2340" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -13,17 +13,155 @@
 <meta name="apple-mobile-web-app-title" content="Finanças" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link id="pf-fonte" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style id="pf-tema"></style>
+<script>
+/* Temas: todas as cores do app saem de variáveis CSS, trocadas aqui (claro/escuro + identidade visual). */
+(function () {
+  var ESC = {
+    slate: 'f8fafc f1f5f9 e2e8f0 cbd5e1 94a3b8 64748b 475569 334155 1e293b 0f172a 020617',
+    neutral: 'fafafa f5f5f5 e5e5e5 d4d4d4 a3a3a3 737373 525252 404040 262626 171717 0a0a0a',
+    slateEscuro: '172235 1c283d 273449 34435b 7a879c 94a0b4 aeb8c8 c8d0dc e1e6ee eef2f7 ffffff',
+    neutralEscuro: '1c1c1c 232323 2f2f2f 3e3e3e 8a8a8a a3a3a3 bdbdbd d4d4d4 e8e8e8 f2f2f2 ffffff',
+    emerald: 'ecfdf5 d1fae5 a7f3d0 6ee7b7 34d399 10b981 059669 047857 065f46 064e3b 022c22',
+    teal: 'f0fdfa ccfbf1 99f6e4 5eead4 2dd4bf 14b8a6 0d9488 0f766e 115e59 134e4a 042f2e',
+    red: 'fef2f2 fee2e2 fecaca fca5a5 f87171 ef4444 dc2626 b91c1c 991b1b 7f1d1d 450a0a',
+    rose: 'fff1f2 ffe4e6 fecdd3 fda4af fb7185 f43f5e e11d48 be123c 9f1239 881337 4c0519',
+    amber: 'fffbeb fef3c7 fde68a fcd34d fbbf24 f59e0b d97706 b45309 92400e 78350f 451a03',
+    sky: 'f0f9ff e0f2fe bae6fd 7dd3fc 38bdf8 0ea5e9 0284c7 0369a1 075985 0c4a6e 082f49',
+    blue: 'eff6ff dbeafe bfdbfe 93c5fd 60a5fa 3b82f6 2563eb 1d4ed8 1e40af 1e3a8a 172554'
+  };
+  var K = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+  var W = [255, 255, 255], B = [0, 0, 0];
+  var PRESETS = {
+    marinho: { nome: 'Marinho & Verde', desc: 'Sóbrio, corporativo', brand: '#0C2340', brand2: '#1B3D6E', destaque: '#00C26A', claro: { ac: '#00924A' }, escuro: { ac: '#18B865' }, neutro: 'slate', fundo: '#F3F5F9' },
+    roxo: { nome: 'Roxo', desc: 'Moderno, vibrante', brand: '#820AD1', brand2: '#4C0677', destaque: '#E9D5FF', claro: { ac: '#820AD1' }, escuro: { ac: '#B26BF0' }, neutro: 'slate', fundo: '#F6F3FA' },
+    preto: { nome: 'Preto & Amarelo', desc: 'Forte, investidor', brand: '#111111', brand2: '#2A2A2A', destaque: '#FFC709', claro: { ac: '#161616', onac: '#FFC709' }, escuro: { ac: '#FFC709', onac: '#111111' }, neutro: 'neutral', fundo: '#F4F4F4' },
+    grafite: { nome: 'Grafite & Laranja', desc: 'Energia, foco', brand: '#1F2328', brand2: '#3A3F47', destaque: '#FF7A1A', claro: { ac: '#E8590C' }, escuro: { ac: '#FF7A1A' }, neutro: 'neutral', fundo: '#F5F5F4' },
+    esmeralda: { nome: 'Esmeralda', desc: 'O visual original', brand: '#065F46', brand2: '#0D9488', destaque: '#6EE7B7', claro: { ac: '#059669' }, escuro: { ac: '#10B981' }, neutro: 'slate', fundo: '#F6FAF8', tailwind: true }
+  };
+  var FONTES = {
+    inter: { nome: 'Inter', css: 'Inter' },
+    jakarta: { nome: 'Plus Jakarta Sans', css: 'Plus Jakarta Sans' },
+    manrope: { nome: 'Manrope', css: 'Manrope' },
+    montserrat: { nome: 'Montserrat', css: 'Montserrat' },
+    poppins: { nome: 'Poppins', css: 'Poppins' }
+  };
+  function rgb(h) {
+    h = String(h || '#000').replace('#', '');
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    var n = parseInt(h, 16) || 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function mix(a, b, t) { return [0, 1, 2].map(function (i) { return Math.round(a[i] * (1 - t) + b[i] * t); }); }
+  function lum(c) {
+    var a = c.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+  }
+  function escala(nome) { return ESC[nome].split(' ').map(rgb); }
+  function escura(L, S) {
+    return [mix(S, L[5], 0.14), mix(S, L[5], 0.22), mix(S, L[5], 0.32), mix(S, L[5], 0.48), L[4], L[5], L[6], L[3], L[2], L[1], L[0]];
+  }
+  function acento(P, escuro, S) {
+    if (escuro) {
+      return [mix(S, P, 0.14), mix(S, P, 0.22), mix(S, P, 0.32), mix(S, P, 0.48), mix(P, W, 0.15), P, P, mix(P, W, 0.35), mix(P, W, 0.55), mix(P, W, 0.7), mix(P, W, 0.85)];
+    }
+    var d = lum(P) > 0.45 ? [0.5, 0.62, 0.72, 0.8] : [0.18, 0.32, 0.45, 0.6];
+    return [mix(P, W, 0.93), mix(P, W, 0.86), mix(P, W, 0.72), mix(P, W, 0.52), mix(P, W, 0.3), mix(P, W, 0.12), P, mix(P, B, d[0]), mix(P, B, d[1]), mix(P, B, d[2]), mix(P, B, d[3])];
+  }
+  function presetDe(cfg) {
+    if (cfg && cfg.tema === 'personalizado' && cfg.cores && cfg.cores.brand && cfg.cores.ac) {
+      var br = rgb(cfg.cores.brand), ac = rgb(cfg.cores.ac);
+      var hex = function (c) { return '#' + c.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join(''); };
+      return {
+        brand: cfg.cores.brand, brand2: hex(mix(br, W, 0.18)), destaque: lum(ac) < 0.2 ? hex(mix(ac, W, 0.55)) : cfg.cores.ac,
+        claro: { ac: cfg.cores.ac }, escuro: { ac: lum(ac) < 0.12 ? hex(mix(ac, W, 0.45)) : cfg.cores.ac },
+        neutro: 'slate', fundo: hex(mix(br, W, 0.955))
+      };
+    }
+    return PRESETS[(cfg && cfg.tema) || 'marinho'] || PRESETS.marinho;
+  }
+  function css(cfg) {
+    var p = presetDe(cfg), esc = !!cfg.escuro, v = [];
+    var put = function (nome, c) { v.push('--' + nome + ':' + c[0] + ' ' + c[1] + ' ' + c[2]); };
+    var serie = function (nome, lista) { lista.forEach(function (c, i) { put(nome + '-' + K[i], c); }); };
+    var neutro = p.neutro || 'slate';
+    var bg = esc ? (neutro === 'neutral' ? rgb('#0A0A0A') : rgb('#0B1220')) : rgb(p.fundo);
+    var card = esc ? (neutro === 'neutral' ? rgb('#151515') : rgb('#111A2B')) : W;
+    var modo = esc ? p.escuro : p.claro;
+    var ac = rgb(modo.ac);
+    put('bg', bg); put('card', card);
+    put('brand', esc ? mix(rgb(p.brand), bg, 0.3) : rgb(p.brand));
+    put('brand2', esc ? mix(rgb(p.brand2), bg, 0.3) : rgb(p.brand2));
+    put('destaque', rgb(p.destaque));
+    put('onac', modo.onac ? rgb(modo.onac) : (lum(ac) > 0.5 ? rgb('#111111') : W));
+    serie('sl', escala(esc ? neutro + 'Escuro' : neutro));
+    var acs = p.tailwind ? (esc ? escura(escala('emerald'), card) : escala('emerald')) : acento(ac, esc, card);
+    serie('ac', acs);
+    serie('ac2', p.tailwind ? (esc ? escura(escala('teal'), card) : escala('teal')) : acs);
+    [['rd', 'red'], ['rs', 'rose'], ['am', 'amber'], ['sk', 'sky'], ['bl', 'blue']].forEach(function (f) {
+      serie(f[0], esc ? escura(escala(f[1]), card) : escala(f[1]));
+    });
+    var fonte = FONTES[cfg.fonte] || FONTES.inter;
+    v.push("--pf-fonte:'" + fonte.css + "'");
+    v.push('--pf-zoom:' + ({ compacto: 0.93, grande: 1.1 }[cfg.escala] || 1));
+    return ':root{' + v.join(';') + ';color-scheme:' + (esc ? 'dark' : 'light') + '}';
+  }
+  function aplicar(cfg) {
+    cfg = cfg || {};
+    try {
+      document.getElementById('pf-tema').textContent = css(cfg);
+      document.documentElement.classList.toggle('dark', !!cfg.escuro);
+      var p = presetDe(cfg);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', cfg.escuro ? (p.neutro === 'neutral' ? '#0A0A0A' : '#0B1220') : p.brand);
+      var f = FONTES[cfg.fonte] || FONTES.inter;
+      var link = document.getElementById('pf-fonte');
+      var url = 'https://fonts.googleapis.com/css2?family=' + f.css.replace(/ /g, '+') + ':wght@400;500;600;700;800&display=swap';
+      if (link && link.getAttribute('href') !== url) link.setAttribute('href', url);
+      localStorage.setItem('pf:tema', JSON.stringify(cfg));
+    } catch (e) { /* sem armazenamento: segue com o tema atual */ }
+  }
+  window.pfTema = { aplicar: aplicar, PRESETS: PRESETS, FONTES: FONTES };
+  var salvo = {};
+  try { salvo = JSON.parse(localStorage.getItem('pf:tema') || '{}') || {}; } catch (e) { salvo = {}; }
+  try {
+    var modoLocal = localStorage.getItem('pf:modo') || 'claro';
+    salvo.escuro = modoLocal === 'escuro' || (modoLocal === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    salvo.escala = localStorage.getItem('pf:escala') || 'normal';
+  } catch (e) { /* idem */ }
+  aplicar(salvo);
+})();
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+(function () {
+  function v(n) {
+    var o = {};
+    [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].forEach(function (k) { o[k] = 'rgb(var(--' + n + '-' + k + ') / <alpha-value>)'; });
+    return o;
+  }
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          slate: v('sl'), emerald: v('ac'), teal: v('ac2'), red: v('rd'), rose: v('rs'), amber: v('am'), sky: v('sk'), blue: v('bl'),
+          card: 'rgb(var(--card) / <alpha-value>)', onac: 'rgb(var(--onac) / <alpha-value>)', destaque: 'rgb(var(--destaque) / <alpha-value>)',
+        },
+      },
+    },
+  };
+})();
+</script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 <style>
-  * { font-family: 'Poppins', sans-serif; }
-  body { margin: 0; background: #f0fdf4; }
+  * { font-family: var(--pf-fonte), system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  body { margin: 0; background: rgb(var(--bg)); }
   ::-webkit-scrollbar { height: 6px; width: 6px; }
-  ::-webkit-scrollbar-thumb { background: #bbf7d0; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--sl-300)); border-radius: 999px; }
 </style>
 </head>
 <body>
@@ -99,6 +237,12 @@ const ICONS = {
   Activity: [['polyline', { points: '22 12 18 12 15 21 9 3 6 12 2 12' }]],
 };
 ICONS.Repeat = ICONS.RefreshCw;
+ICONS.Sun = [['circle', { cx: 12, cy: 12, r: 4 }], ['path', { d: 'M12 2v2' }], ['path', { d: 'M12 20v2' }], ['path', { d: 'm4.93 4.93 1.41 1.41' }], ['path', { d: 'm17.66 17.66 1.41 1.41' }], ['path', { d: 'M2 12h2' }], ['path', { d: 'M20 12h2' }], ['path', { d: 'm6.34 17.66-1.41 1.41' }], ['path', { d: 'm19.07 4.93-1.41 1.41' }]];
+ICONS.Moon = [['path', { d: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z' }]];
+ICONS.Monitor = [['rect', { x: 2, y: 3, width: 20, height: 14, rx: 2 }], ['line', { x1: 8, y1: 21, x2: 16, y2: 21 }], ['line', { x1: 12, y1: 17, x2: 12, y2: 21 }]];
+ICONS.Settings = [['path', { d: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z' }], ['circle', { cx: 12, cy: 12, r: 3 }]];
+ICONS.Eye = [['path', { d: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z' }], ['circle', { cx: 12, cy: 12, r: 3 }]];
+ICONS.Type = [['polyline', { points: '4 7 4 4 20 4 20 7' }], ['line', { x1: 9, y1: 20, x2: 15, y2: 20 }], ['line', { x1: 12, y1: 4, x2: 12, y2: 20 }]];
 
 function Icon({ name, size = 16, className = '', style }) {
   if (name === 'Loader2') {
@@ -186,7 +330,7 @@ function GraficoAnual({ dados, mesDestaque }) {
   const slot = (W - P.l - P.r) / dados.length;
   const bw = Math.min(24, slot * 0.34);
   const cx = (i) => P.l + i * slot + slot / 2;
-  const contorno = { paintOrder: 'stroke', stroke: '#fff', strokeWidth: 3, strokeLinejoin: 'round' };
+  const contorno = { paintOrder: 'stroke', stroke: 'rgb(var(--card))', strokeWidth: 3, strokeLinejoin: 'round' };
   const rotuloBarra = (x, v, cor) => {
     if (!(v > 0)) return null;
     const alt = y(0) - y(v);
@@ -311,6 +455,25 @@ function aplicarCategorias(cat) {
   DRE_PAGAMENTOS_EXTRAS = cat.pagar.filter((c) => grupos[c] === 'pagamentos');
 }
 
+/* ------------------------------ Aparência --------------------------------- */
+
+// Identidade visual e textos (salvos em config.aparencia, valem para todos os aparelhos).
+const APARENCIA_PADRAO = {
+  tema: 'marinho', cores: null, fonte: 'inter',
+  nomeApp: 'Finanças da Casa', chamada: 'Painel da família', titulo: 'Finanças Alves de Sousa',
+  frase: 'Na sua casa há prosperidade e riqueza, e a sua justiça permanece para sempre.', referencia: 'Salmos 112:3', mostrarFrase: true,
+  abasOcultas: [], abaInicial: 'dashboard',
+};
+let APARENCIA = APARENCIA_PADRAO;
+
+// Preferências deste aparelho (modo claro/escuro, tamanho do texto, atualização automática)
+function lerLocal(chave, padrao) {
+  try { const v = localStorage.getItem(chave); return v == null ? padrao : v; } catch (e) { return padrao; }
+}
+function gravarLocal(chave, valor) {
+  try { localStorage.setItem(chave, valor); } catch (e) { /* sem armazenamento local */ }
+}
+
 function construirLinhasDre(categorias, tipo, dados, passaFiltro, orcamentos, mk) {
   return categorias
     .map((c) => {
@@ -399,7 +562,7 @@ function DreTabela({ modo, itens, receitaTotal, orcamentos, mk, onSetOrcamento, 
           if (novo !== (Number(orcamentos?.[c]?.[mk]) || 0)) onSetOrcamento(c, mk, novo);
         }}
         placeholder="0,00"
-        className="w-28 text-xs text-right border border-slate-200 bg-white rounded-lg pl-7 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+        className="w-28 text-xs text-right border border-slate-200 bg-card rounded-lg pl-7 pr-2 py-1.5 pf-num focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
       />
     </div>
   );
@@ -421,13 +584,13 @@ function DreTabela({ modo, itens, receitaTotal, orcamentos, mk, onSetOrcamento, 
               const negativo = it.valor < 0;
               const final = it.final;
               const cls = final
-                ? (negativo ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white')
+                ? (negativo ? 'bg-rose-600 text-onac' : 'bg-emerald-600 text-onac')
                 : 'bg-emerald-50 text-emerald-900';
               return (
                 <tr key={it.titulo} className={`${cls} font-semibold`}>
                   <td className={`px-3 ${final ? 'py-3 text-sm' : 'py-2.5'} ${final ? 'rounded-l-xl' : ''}`}>
                     <span className="inline-flex items-center gap-2">
-                      <span className={`w-5 h-5 rounded-md inline-flex items-center justify-center text-[11px] font-bold ${final ? 'bg-white/20' : 'bg-emerald-600 text-white'}`}>=</span>
+                      <span className={`w-5 h-5 rounded-md inline-flex items-center justify-center text-[11px] font-bold ${final ? 'bg-white/20' : 'bg-emerald-600 text-onac'}`}>=</span>
                       {it.titulo}
                     </span>
                   </td>
@@ -635,17 +798,34 @@ async function lerArquivoExtrato(file) {
 function GlobalStyle() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-      .pf-root, .pf-root * { font-family: 'Poppins', sans-serif; }
+      .pf-root, .pf-root * { font-family: var(--pf-fonte), system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .pf-root { background: rgb(var(--bg)); color: rgb(var(--sl-800)); zoom: var(--pf-zoom, 1); -webkit-font-smoothing: antialiased; }
       .pf-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
-      .pf-scroll::-webkit-scrollbar-thumb { background: #a7f3d0; border-radius: 999px; }
+      .pf-scroll::-webkit-scrollbar-thumb { background: rgb(var(--sl-300)); border-radius: 999px; }
       input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
-      .pf-root { background:
-        radial-gradient(1200px 400px at 10% -10%, rgba(16,185,129,0.10), transparent 60%),
-        radial-gradient(900px 400px at 100% 0%, rgba(20,184,166,0.08), transparent 60%),
-        #f6faf8; }
-      .pf-card { box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 28px -16px rgba(6,78,59,0.18); }
-      .pf-root table thead tr { background: #f8fafc; }
+      .pf-card { box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 12px 32px -18px rgb(15 23 42 / 0.16); }
+      .dark .pf-card { box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset; }
+      .pf-root table thead tr { background: rgb(var(--sl-50)); }
+      .pf-root h1, .pf-root h2, .pf-root h3 { letter-spacing: -0.015em; }
+
+      /* Identidade visual: topo e painéis de destaque */
+      .pf-topo { background: linear-gradient(100deg, rgb(var(--brand)) 0%, rgb(var(--brand2)) 100%); }
+      .dark .pf-topo { box-shadow: 0 1px 0 rgb(255 255 255 / 0.06); }
+      .pf-hero { background:
+        radial-gradient(520px 260px at 100% 0%, rgb(var(--destaque) / 0.22), transparent 65%),
+        linear-gradient(135deg, rgb(var(--brand)) 0%, rgb(var(--brand2)) 100%); }
+      .dark .pf-hero { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06) inset; }
+      .pf-destaque { color: rgb(var(--destaque)); }
+
+      /* Modo escuro: campos e gráficos desenhados com cores fixas */
+      :where(.dark) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) { background-color: rgb(var(--card)); }
+      .dark [fill="#ecfdf5"] { fill: rgb(var(--ac-50)); }
+      .dark [fill="#1e293b"], .dark [fill="#334155"] { fill: rgb(var(--sl-800)); }
+      .dark [fill="#047857"] { fill: rgb(var(--ac-700)); }
+      .dark [stroke="#334155"] { stroke: rgb(var(--sl-700)); }
+      .dark [stroke="#f1f5f9"], .dark [stroke="#e2e8f0"] { stroke: rgb(var(--sl-200)); }
+      .dark [stroke="#cbd5e1"] { stroke: rgb(var(--sl-300)); }
+      .dark [stroke="#fff"] { stroke: rgb(var(--card)); }
       .pf-root input:not([type="checkbox"]):not([type="range"]), .pf-root select { transition: border-color .15s, box-shadow .15s; }
       .pf-num { font-variant-numeric: tabular-nums; }
       @keyframes pfFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -658,7 +838,7 @@ function GlobalStyle() {
 
 function Card({ children, className = '' }) {
   return (
-    <div className={`pf-card bg-white rounded-2xl border border-slate-200/70 ${className}`}>
+    <div className={`pf-card bg-card rounded-2xl border border-slate-200/70 ${className}`}>
       {children}
     </div>
   );
@@ -678,7 +858,7 @@ function SectionTitle({ icon, title, subtitle, right }) {
     <div className="flex items-start justify-between gap-3 mb-4">
       <div className="flex items-center gap-2">
         {icon && (
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shrink-0 shadow-sm shadow-emerald-600/30">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
             <Icon name={icon} size={17} />
           </div>
         )}
@@ -709,7 +889,7 @@ function MonthYearPicker({ mes, ano, onChange }) {
     onChange(m, y);
   };
   return (
-    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+    <div className="flex items-center gap-1 bg-card border border-slate-200 rounded-xl p-1 shadow-sm">
       <button onClick={() => go(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-emerald-50 text-emerald-700 transition">
         <Icon name="ChevronLeft" size={16} />
       </button>
@@ -750,14 +930,14 @@ function CategoryMultiSelect({ categorias, selected, onChange }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-sm bg-white border border-emerald-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 transition"
+        className="flex items-center gap-2 text-sm bg-card border border-emerald-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 transition"
       >
         <Icon name="Filter" size={14} className="text-emerald-500" />
         {label}
         <Icon name="ChevronDown" size={14} className="text-slate-400" />
       </button>
       {open && (
-        <div className="absolute z-20 mt-2 w-64 bg-white border border-emerald-100 rounded-xl shadow-lg p-2 max-h-72 overflow-y-auto pf-scroll">
+        <div className="absolute z-20 mt-2 w-64 bg-card border border-emerald-100 rounded-xl shadow-lg p-2 max-h-72 overflow-y-auto pf-scroll">
           <button
             onClick={() => onChange([])}
             className="w-full text-left text-xs font-medium text-emerald-600 px-2 py-1.5 hover:bg-emerald-50 rounded-lg mb-1"
@@ -860,8 +1040,8 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
   const totalSerie = datas.length * (Number(form.valor) || 0);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll pf-fade">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll pf-fade">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-base font-semibold text-slate-800">{titulo}</h3>
@@ -890,7 +1070,7 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
             <select
               value={form.categoria}
               onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-              className={`${inputCls} bg-white`}
+              className={`${inputCls} bg-card`}
             >
               {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -941,7 +1121,7 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
                     <button
                       key={String(op.v)}
                       onClick={() => setRecorrente(op.v)}
-                      className={`px-3 py-1 rounded-md transition ${recorrente === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                      className={`px-3 py-1 rounded-md transition ${recorrente === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-slate-500'}`}
                     >
                       {op.l}
                     </button>
@@ -958,7 +1138,7 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
                         <button
                           key={f.v}
                           onClick={() => setFrequencia(f.v)}
-                          className={`text-xs py-2 rounded-lg border transition ${frequencia === f.v ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300'}`}
+                          className={`text-xs py-2 rounded-lg border transition ${frequencia === f.v ? 'bg-emerald-600 border-emerald-600 text-onac' : 'bg-card border-slate-200 text-slate-600 hover:border-emerald-300'}`}
                         >
                           {f.l}
                         </button>
@@ -979,14 +1159,14 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
                         <button
                           key={n}
                           onClick={() => setDataFim(addMonthsToDateStr(form.data, n - 1))}
-                          className="text-[11px] px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700"
+                          className="text-[11px] px-2 py-1 rounded-md bg-card border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700"
                         >
                           {n} meses
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-xl bg-white border border-emerald-100 px-3 py-2">
+                  <div className="rounded-xl bg-card border border-emerald-100 px-3 py-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium text-slate-700">{datas.length} lançamento{datas.length !== 1 ? 's' : ''}</span>
                       <span className="text-slate-500 pf-num">total {formatBRL(totalSerie)}</span>
@@ -1009,7 +1189,7 @@ function TransactionModal({ open, onClose, onSave, categorias, tipo, initial, mo
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           {editando ? 'Salvar' : datas.length > 1 ? `Criar ${datas.length} lançamentos` : 'Salvar'}
         </button>
@@ -1054,7 +1234,7 @@ function PopoverFixo({ anchorRef, open, onClose, children, largura = 240 }) {
     <div
       data-pf-pop
       style={{ position: 'fixed', ...pos, width: largura, zIndex: 60 }}
-      className="bg-white border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 p-2 pf-fade text-left normal-case tracking-normal"
+      className="bg-card border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 p-2 pf-fade text-left normal-case tracking-normal"
     >
       {children}
     </div>,
@@ -1192,8 +1372,8 @@ function ConfirmModal({ open, titulo, texto, confirmar = 'Excluir', onConfirm, o
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
         <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-3">
           <Icon name="Trash2" size={18} />
         </div>
@@ -1252,8 +1432,8 @@ function EdicaoMassaModal({ open, onClose, onSave, itens, categorias, tipo }) {
 
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll pf-fade">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll pf-fade">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-base font-semibold text-slate-800">Editar {itens.length} lançamentos</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -1267,14 +1447,14 @@ function EdicaoMassaModal({ open, onClose, onSave, itens, categorias, tipo }) {
             <div className="text-sm font-medium text-slate-700 mb-2">Status</div>
             <div className="grid grid-cols-3 gap-1.5">
               {[['manter', 'Manter'], ['quitado', rotPago], ['pendente', rotNaoPago]].map(([v, l]) => (
-                <button key={v} onClick={() => set('status', v)} className={`text-xs py-2 rounded-lg border transition ${f.status === v ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300'}`}>{l}</button>
+                <button key={v} onClick={() => set('status', v)} className={`text-xs py-2 rounded-lg border transition ${f.status === v ? 'bg-emerald-600 border-emerald-600 text-onac' : 'bg-card border-slate-200 text-slate-600 hover:border-emerald-300'}`}>{l}</button>
               ))}
             </div>
           </div>
 
           <div className={`rounded-xl border p-3 ${f.categoria ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200'}`}>
             <div className="text-sm font-medium text-slate-700 mb-2">Categoria</div>
-            <select value={f.categoria} onChange={(e) => set('categoria', e.target.value)} className={`${inputCls} bg-white`}>
+            <select value={f.categoria} onChange={(e) => set('categoria', e.target.value)} className={`${inputCls} bg-card`}>
               <option value="">Manter a categoria de cada um</option>
               {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -1298,7 +1478,7 @@ function EdicaoMassaModal({ open, onClose, onSave, itens, categorias, tipo }) {
         <button
           onClick={salvar}
           disabled={alteracoes.length === 0}
-          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Aplicar em {itens.length} lançamentos
         </button>
@@ -1351,8 +1531,8 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
   const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300';
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[92vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
         <div className="p-5 pb-3 border-b border-slate-100">
           <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
           <div className="flex items-center justify-between">
@@ -1373,10 +1553,10 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
               className={`${inputCls} flex-1`}
             />
             <div className="flex gap-2">
-              <select value={grupoNovo} onChange={(e) => setGrupoNovo(e.target.value)} className={`${inputCls} bg-white sm:w-44`} title="Linha do DRE">
+              <select value={grupoNovo} onChange={(e) => setGrupoNovo(e.target.value)} className={`${inputCls} bg-card sm:w-44`} title="Linha do DRE">
                 {opcoesGrupo.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-              <button onClick={adicionar} className="shrink-0 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 rounded-xl">
+              <button onClick={adicionar} className="shrink-0 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-onac text-sm font-medium px-3 rounded-xl">
                 <Icon name="Plus" size={15} /> Adicionar
               </button>
             </div>
@@ -1395,9 +1575,9 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
                     value={editando.texto}
                     onChange={(e) => { setEditando({ ...editando, texto: e.target.value }); setErro(''); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') salvarNome(); if (e.key === 'Escape') setEditando(null); }}
-                    className={`${inputCls} flex-1 bg-white`}
+                    className={`${inputCls} flex-1 bg-card`}
                   />
-                  <button onClick={salvarNome} title="Salvar" className="w-10 shrink-0 flex items-center justify-center rounded-xl bg-emerald-600 text-white"><Icon name="Check" size={16} /></button>
+                  <button onClick={salvarNome} title="Salvar" className="w-10 shrink-0 flex items-center justify-center rounded-xl bg-emerald-600 text-onac"><Icon name="Check" size={16} /></button>
                   <button onClick={() => setEditando(null)} title="Cancelar" className="w-10 shrink-0 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Icon name="X" size={16} /></button>
                 </div>
               );
@@ -1410,7 +1590,7 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
                   {usos > 0 ? (
                     <>
                       <div className="text-xs text-slate-500 mt-0.5">Ela tem {usos} {usos === 1 ? 'lançamento' : 'lançamentos'}. Para não perder nada, eles vão para a categoria:</div>
-                      <select value={excluindo.destino} onChange={(e) => { setExcluindo({ ...excluindo, destino: e.target.value }); setErro(''); }} className={`${inputCls} bg-white mt-2`}>
+                      <select value={excluindo.destino} onChange={(e) => { setExcluindo({ ...excluindo, destino: e.target.value }); setErro(''); }} className={`${inputCls} bg-card mt-2`}>
                         <option value="">Escolha a categoria…</option>
                         {destinos.map((d) => <option key={d} value={d}>{d}</option>)}
                       </select>
@@ -1419,7 +1599,7 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
                     <div className="text-xs text-slate-500 mt-0.5">Ela não tem nenhum lançamento.</div>
                   )}
                   <div className="grid grid-cols-2 gap-2 mt-3">
-                    <button onClick={() => { setExcluindo(null); setErro(''); }} className="py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200">Cancelar</button>
+                    <button onClick={() => { setExcluindo(null); setErro(''); }} className="py-2 rounded-xl text-sm font-medium text-slate-600 bg-card border border-slate-200">Cancelar</button>
                     <button onClick={confirmarExclusao} className="py-2 rounded-xl text-sm font-medium text-white bg-rose-600 hover:bg-rose-700">Excluir</button>
                   </div>
                 </div>
@@ -1436,7 +1616,7 @@ function CategoriasModal({ open, onClose, tipo, categorias, gerenciar }) {
                       value={grupos[c] || 'fora'}
                       onChange={(e) => gerenciar.mudarGrupo(c, e.target.value)}
                       title="Linha do DRE"
-                      className="min-w-0 text-[11px] border border-slate-200 rounded-md px-1 py-0.5 bg-white text-slate-600"
+                      className="min-w-0 text-[11px] border border-slate-200 rounded-md px-1 py-0.5 bg-card text-slate-600"
                     >
                       {opcoesGrupo.map(([v, l]) => <option key={v} value={v}>DRE: {l}</option>)}
                     </select>
@@ -1596,12 +1776,12 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
   return (
     <div className="pb-24">
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
+        <div className="flex bg-card border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
           {[{ v: 'mes', l: 'Mês' }, { v: 'periodo', l: 'Período' }].map((op) => (
             <button
               key={op.v}
               onClick={() => setModoFiltro(op.v)}
-              className={`px-3 py-1.5 rounded-lg transition ${modoFiltro === op.v ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
+              className={`px-3 py-1.5 rounded-lg transition ${modoFiltro === op.v ? 'bg-emerald-600 text-onac shadow-sm' : 'text-slate-500'}`}
             >
               {op.l}
             </button>
@@ -1631,7 +1811,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
           <button
             onClick={() => setCategoriasOpen(true)}
             title="Cadastrar, editar ou excluir categorias"
-            className="flex items-center gap-1.5 text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 transition"
+            className="flex items-center gap-1.5 text-sm bg-card border border-slate-200 rounded-xl px-3 py-2 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 transition"
           >
             <Icon name="Pencil" size={13} /> Categorias
           </button>
@@ -1658,7 +1838,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
       )}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex bg-white border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
+        <div className="flex bg-card border border-slate-200 shadow-sm rounded-xl p-1 text-xs font-medium">
           {[
             { v: 'todos', l: 'Todos' },
             { v: 'quitado', l: tipo === 'pagar' ? 'Pago' : 'Recebido' },
@@ -1667,7 +1847,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
             <button
               key={op.v}
               onClick={() => setStatusFiltro(op.v)}
-              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
+              className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-emerald-600 text-onac shadow-sm' : 'text-slate-500'}`}
             >
               {op.l}
             </button>
@@ -1679,7 +1859,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por descrição..."
-            className="w-full text-sm bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+            className="w-full text-sm bg-card border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
           />
         </div>
       </div>
@@ -1707,7 +1887,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
             )}
             <button
               onClick={openNew}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-onac text-xs font-medium px-3 py-2 rounded-xl transition"
             >
               <Icon name="Plus" size={14} /> Novo
             </button>
@@ -1771,7 +1951,7 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
                       <td className="pl-1 pr-2 py-2.5">
                         <button
                           onClick={() => onToggleQuitado(t)}
-                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${t.quitado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center border transition ${t.quitado ? 'bg-emerald-500 border-emerald-500 text-onac' : 'border-slate-300 text-transparent hover:border-emerald-400'}`}
                         >
                           <Icon name="Check" size={14} />
                         </button>
@@ -1810,16 +1990,16 @@ function ContasTable({ tipo, categorias, lancamentos, cartaoTransacoes, onAdd, o
 
       {selVisiveis.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 w-[calc(100%-2rem)] max-w-xl pf-fade">
-          <div className="flex items-center justify-between gap-3 bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-2xl shadow-slate-900/30">
+          <div className="flex items-center justify-between gap-3 bg-[#0b1220] text-white rounded-2xl px-4 py-3 shadow-2xl shadow-black/30 ring-1 ring-white/10">
             <div className="min-w-0">
-              <div className="text-[11px] text-slate-300">{selVisiveis.length} selecionado{selVisiveis.length !== 1 ? 's' : ''}</div>
+              <div className="text-[11px] text-white/60">{selVisiveis.length} selecionado{selVisiveis.length !== 1 ? 's' : ''}</div>
               <div className="text-lg font-semibold pf-num leading-tight">{formatBRL(somaSel)}</div>
               <div className="text-[10px] text-slate-400 pf-num">
                 {rotuloQuitado[0].toLowerCase()} {formatBRL(somaSelQuitado)} · em aberto {formatBRL(somaSel - somaSelQuitado)}
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <button onClick={() => setMassaOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold bg-white text-slate-900 hover:bg-emerald-50 px-3 py-2 rounded-xl">
+              <button onClick={() => setMassaOpen(true)} className="flex items-center gap-1.5 text-xs font-semibold bg-card text-slate-900 hover:bg-emerald-50 px-3 py-2 rounded-xl">
                 <Icon name="Pencil" size={13} /> Editar
               </button>
               <button onClick={() => setConfirmar({ itens: selVisiveis })} className="flex items-center gap-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-xl">
@@ -2243,17 +2423,19 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
   return (
     <div className="pb-24 space-y-4">
       {/* Cabeçalho */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-600 text-white px-5 py-5 sm:px-7 sm:py-6 shadow-lg shadow-emerald-900/20">
+      <div className="relative overflow-hidden rounded-3xl pf-hero text-white px-5 py-5 sm:px-7 sm:py-6 shadow-lg shadow-black/10">
         <div className="absolute -right-10 -top-14 w-52 h-52 rounded-full bg-white/10" />
         <div className="absolute right-24 -bottom-20 w-40 h-40 rounded-full bg-white/5" />
         <div className="relative flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-100/90 font-medium">Painel da família</div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mt-1">Finanças Alves de Sousa</h2>
-            <p className="mt-2 text-sm text-emerald-50/95 italic max-w-xl leading-relaxed">
-              “Na sua casa há prosperidade e riqueza, e a sua justiça permanece para sempre.”
-              <span className="not-italic text-xs text-emerald-100/80 font-medium ml-1.5">Salmos 112:3</span>
-            </p>
+            {APARENCIA.chamada && <div className="text-[11px] uppercase tracking-[0.2em] pf-destaque font-semibold">{APARENCIA.chamada}</div>}
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mt-1">{APARENCIA.titulo}</h2>
+            {APARENCIA.mostrarFrase && APARENCIA.frase && (
+              <p className="mt-2 text-sm text-white/85 italic max-w-xl leading-relaxed">
+                “{APARENCIA.frase}”
+                {APARENCIA.referencia && <span className="not-italic text-xs text-white/65 font-medium ml-1.5">{APARENCIA.referencia}</span>}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <MonthYearPicker mes={mes} ano={ano} onChange={(m, y) => { setMes(m); setAno(y); }} />
@@ -2266,7 +2448,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
                 <button
                   key={op.v}
                   onClick={() => setStatusFiltro(op.v)}
-                  className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-white/85 hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded-lg transition ${statusFiltro === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-white/85 hover:text-white'}`}
                 >
                   {op.l}
                 </button>
@@ -2400,7 +2582,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
               <button
                 key={op.v}
                 onClick={() => setModoDre(op.v)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${modoDre === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${modoDre === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {op.icon && <Icon name={op.icon} size={12} />}{op.l}
               </button>
@@ -2504,7 +2686,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
               <button
                 key={op.v}
                 onClick={() => setFluxoFiltro(op.v)}
-                className={`px-2.5 py-1.5 rounded-lg transition ${fluxoFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+                className={`px-2.5 py-1.5 rounded-lg transition ${fluxoFiltro === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
               >
                 {op.l}
               </button>
@@ -2536,7 +2718,7 @@ function DashboardTab({ lancamentos, orcamentos, onSetOrcamento, config, onSetSa
           </summary>
           <div className="overflow-x-auto pf-scroll max-h-80 overflow-y-auto mt-2">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-white">
+              <thead className="sticky top-0 bg-card">
                 <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
                   <th className="px-2 py-2">Dia</th>
                   <th className="px-2 py-2 text-right">Entradas</th>
@@ -2605,8 +2787,8 @@ function MetaModal({ open, onClose, onSave, initial }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">
             {initial ? 'Editar meta' : 'Nova meta ou sonho'}
@@ -2664,7 +2846,7 @@ function MetaModal({ open, onClose, onSave, initial }) {
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar
         </button>
@@ -2687,8 +2869,8 @@ function AporteModal({ open, onClose, onSave, meta }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">Atualizar "{meta.nome}"</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -2707,7 +2889,7 @@ function AporteModal({ open, onClose, onSave, meta }) {
         <button
           onClick={submit}
           disabled={!Number(valor)}
-          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Confirmar
         </button>
@@ -2830,7 +3012,7 @@ function MetasTab({ metas, onAdd, onEdit, onDelete, onAportar }) {
         )}
         <button
           onClick={openNew}
-          className="flex items-center justify-center gap-1.5 w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
+          className="flex items-center justify-center gap-1.5 w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-onac text-sm font-medium px-3 py-2.5 rounded-xl transition"
         >
           <Icon name="Plus" size={15} /> Nova meta ou sonho
         </button>
@@ -2863,7 +3045,7 @@ function CategoriaChip({ categoria, onClick, grande }) {
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 max-w-full rounded-full border transition active:scale-[0.98] ${grande ? 'px-3 py-2 text-[13px]' : 'px-2.5 py-1 text-xs'} hover:shadow-sm`}
-      style={{ borderColor: `${cor}55`, background: `${cor}12`, color: '#334155' }}
+      style={{ borderColor: `${cor}55`, background: `${cor}12`, color: 'rgb(var(--sl-700))' }}
     >
       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }} />
       <span className="truncate font-medium">{categoria}</span>
@@ -2882,8 +3064,8 @@ function CategoriaSheet({ item, iguais, onClose, onEscolher }) {
   const termo = busca.trim().toLowerCase();
   const lista = CATEGORIAS_PAGAR.filter((c) => !termo || c.toLowerCase().includes(termo));
   return (
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4" onMouseDown={onClose}>
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] flex flex-col pf-fade" onMouseDown={(e) => e.stopPropagation()}>
         <div className="p-5 pb-3 border-b border-slate-100">
           <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
           <div className="flex items-start justify-between gap-3">
@@ -2918,7 +3100,7 @@ function CategoriaSheet({ item, iguais, onClose, onEscolher }) {
                 <button
                   key={c}
                   onClick={() => onEscolher(c, iguais > 0 && aplicarIguais)}
-                  className={`flex items-center gap-2 text-left rounded-xl border px-3 py-3 text-[13px] font-medium transition active:scale-[0.98] ${atual ? 'text-white shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'}`}
+                  className={`flex items-center gap-2 text-left rounded-xl border px-3 py-3 text-[13px] font-medium transition active:scale-[0.98] ${atual ? 'text-white shadow-sm' : 'bg-card text-slate-700 border-slate-200 hover:border-emerald-300'}`}
                   style={atual ? { background: cor, borderColor: cor } : {}}
                 >
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: atual ? '#fff' : cor }} />
@@ -3102,28 +3284,28 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
             </div>
             <div>
               <label className="text-[11px] font-medium text-slate-500">Coluna da data</label>
-              <select value={colData} onChange={(e) => setColData(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+              <select value={colData} onChange={(e) => setColData(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-card max-w-[140px]">
                 <option value={-1}>Selecione…</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[11px] font-medium text-slate-500">Coluna da descrição</label>
-              <select value={colDesc} onChange={(e) => setColDesc(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+              <select value={colDesc} onChange={(e) => setColDesc(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-card max-w-[140px]">
                 <option value={-1}>Selecione…</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[11px] font-medium text-slate-500">Coluna do valor</label>
-              <select value={colValor} onChange={(e) => setColValor(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white max-w-[140px]">
+              <select value={colValor} onChange={(e) => setColValor(Number(e.target.value))} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-card max-w-[140px]">
                 <option value={-1}>Selecione…</option>
                 {headers.map((h, i) => <option key={i} value={i}>{h || `Coluna ${i + 1}`}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[11px] font-medium text-slate-500">Formato da data</label>
-              <select value={formatoData} onChange={(e) => setFormatoData(e.target.value)} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white">
+              <select value={formatoData} onChange={(e) => setFormatoData(e.target.value)} className="block mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-card">
                 <option value="BR">dd/mm/aaaa (Brasil)</option>
                 <option value="US">mm/dd/aaaa (EUA)</option>
               </select>
@@ -3144,7 +3326,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
               </div>
               <div className="sm:hidden space-y-2 max-h-[60vh] overflow-y-auto pf-scroll">
                 {linhas.map((l, i) => (
-                  <div key={l.id} className={`rounded-xl border p-3 ${!l.incluir ? 'opacity-50 border-slate-100' : 'border-slate-200'} ${l.correspondeId ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                  <div key={l.id} className={`rounded-xl border p-3 ${!l.incluir ? 'opacity-50 border-slate-100' : 'border-slate-200'} ${l.correspondeId ? 'bg-emerald-50/40' : 'bg-card'}`}>
                     <div className="flex items-start gap-2.5">
                       <input
                         type="checkbox"
@@ -3171,7 +3353,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
               </div>
               <div className="hidden sm:block overflow-x-auto pf-scroll max-h-80 overflow-y-auto border border-slate-100 rounded-xl">
                 <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white">
+                  <thead className="sticky top-0 bg-card">
                     <tr className="text-left text-[10px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
                       <th className="px-3 py-2">Incluir</th>
                       <th className="px-2 py-2">Data</th>
@@ -3235,7 +3417,7 @@ function ImportarExtrato({ onConfirm, pendentes, onReplicar, historico, onAprend
                 <button
                   onClick={confirmar}
                   disabled={qtdSelecionada === 0}
-                  className="bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-emerald-700 transition"
+                  className="bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-emerald-700 transition"
                 >
                   Confirmar importação
                 </button>
@@ -3284,8 +3466,8 @@ function LancamentoCartaoModal({ open, onClose, onSave, historico }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">Lançar compra do cartão</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -3317,7 +3499,7 @@ function LancamentoCartaoModal({ open, onClose, onSave, historico }) {
             <select
               value={form.categoria}
               onChange={(e) => { setCategoriaManual(true); setForm({ ...form, categoria: e.target.value }); }}
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             >
               {CATEGORIAS_PAGAR.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -3357,7 +3539,7 @@ function LancamentoCartaoModal({ open, onClose, onSave, historico }) {
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar
         </button>
@@ -3460,7 +3642,7 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
         <SectionTitle icon="Pencil" title="Lançar compra do cartão" subtitle="Categorize agora, confirme quando o extrato chegar" right={null} />
         <button
           onClick={() => setModalManualOpen(true)}
-          className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition"
+          className="flex items-center justify-center gap-1.5 w-full bg-emerald-600 hover:bg-emerald-700 text-onac text-sm font-medium px-3 py-2.5 rounded-xl transition"
         >
           <Icon name="Plus" size={15} /> Lançar compra agora
         </button>
@@ -3487,10 +3669,10 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
               <button
                 key={c}
                 onClick={() => setCategoriasSel(ativo ? categoriasSel.filter((x) => x !== c) : [...categoriasSel, c])}
-                className={`shrink-0 text-left rounded-xl px-3 py-2 border transition ${ativo ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 hover:border-emerald-300'}`}
+                className={`shrink-0 text-left rounded-xl px-3 py-2 border transition ${ativo ? 'bg-emerald-600 border-emerald-600 text-onac' : 'bg-card border-slate-200 hover:border-emerald-300'}`}
               >
-                <div className={`text-[10px] ${ativo ? 'text-emerald-50' : 'text-slate-500'}`}>{c}</div>
-                <div className={`text-sm font-semibold pf-num ${ativo ? 'text-white' : 'text-slate-700'}`}>{formatBRL(v)}</div>
+                <div className={`text-[10px] ${ativo ? 'text-onac/80' : 'text-slate-500'}`}>{c}</div>
+                <div className={`text-sm font-semibold pf-num ${ativo ? 'text-onac' : 'text-slate-700'}`}>{formatBRL(v)}</div>
               </button>
             );
           })}
@@ -3520,13 +3702,13 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
               <button
                 key={op.v}
                 onClick={() => setStatusFiltro(op.v)}
-                className={`px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${statusFiltro === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                className={`px-2.5 py-1.5 rounded-lg transition whitespace-nowrap ${statusFiltro === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-slate-500'}`}
               >
                 {op.l}
               </button>
             ))}
           </div>
-          <select value={ordem} onChange={(e) => setOrdem(e.target.value)} className="text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600">
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value)} className="text-xs bg-card border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600">
             <option value="data">Ordenar por data</option>
             <option value="valorDesc">Maior valor primeiro</option>
             <option value="valorAsc">Menor valor primeiro</option>
@@ -3538,7 +3720,7 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar por descrição..."
-              className="w-full text-sm bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              className="w-full text-sm bg-card border border-slate-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             />
           </div>
           {temFiltro && (
@@ -3556,7 +3738,7 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
           <>
           <div className="sm:hidden mt-3 px-3 space-y-2 pb-3">
             {filtrados.map((t) => (
-              <div key={t.id} className={`rounded-2xl border p-3 ${t.confirmado === false ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+              <div key={t.id} className={`rounded-2xl border p-3 ${t.confirmado === false ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-card'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium text-slate-700 leading-snug break-words">{t.descricao}</div>
@@ -3646,8 +3828,8 @@ function CartaoTab({ transacoes, orcamentos, historico, onAprender, onImport, on
       />
 
       {limparOpen && (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4" onMouseDown={() => setLimparOpen(false)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4" onMouseDown={() => setLimparOpen(false)}>
+          <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 pf-fade" onMouseDown={(e) => e.stopPropagation()}>
             <div className="w-11 h-11 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mb-3"><Icon name="Trash2" size={18} /></div>
             <h3 className="text-base font-semibold text-slate-800">Limpar a fatura de {MESES[mes - 1]} {ano}?</h3>
             <p className="text-sm text-slate-500 mt-1 pf-num">Vai apagar as <b>{doMes.length} compras</b> do cartão desta fatura ({formatBRL(totalMes)}). Os outros meses não são afetados.</p>
@@ -3758,8 +3940,8 @@ function AtivoModal({ open, onClose, onSave, initial }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">{initial ? 'Editar ativo' : 'Novo ativo'}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -3781,7 +3963,7 @@ function AtivoModal({ open, onClose, onSave, initial }) {
             <select
               value={form.tipo}
               onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
+              className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300"
             >
               {TIPOS_ATIVO.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -3811,7 +3993,7 @@ function AtivoModal({ open, onClose, onSave, initial }) {
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar
         </button>
@@ -3834,8 +4016,8 @@ function MovimentacaoModal({ open, onClose, onSave, ativo }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">Movimentação · {ativo.nome}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -3848,7 +4030,7 @@ function MovimentacaoModal({ open, onClose, onSave, ativo }) {
               <button
                 key={t.v}
                 onClick={() => setForm({ ...form, tipo: t.v })}
-                className={`flex-1 px-2 py-2 rounded-lg transition ${form.tipo === t.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+                className={`flex-1 px-2 py-2 rounded-lg transition ${form.tipo === t.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
               >
                 {t.l}
               </button>
@@ -3879,7 +4061,7 @@ function MovimentacaoModal({ open, onClose, onSave, ativo }) {
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar
         </button>
@@ -3910,8 +4092,8 @@ function AtualizarValorModal({ open, onClose, onSave, ativo, movimentacoes }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">Atualizar valor · {ativo.nome}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -3941,7 +4123,7 @@ function AtualizarValorModal({ open, onClose, onSave, ativo, movimentacoes }) {
                 <button
                   key={op}
                   onClick={() => setTipo(op)}
-                  className={`flex-1 px-2 py-2 rounded-lg transition capitalize ${tipoValido === op ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+                  className={`flex-1 px-2 py-2 rounded-lg transition capitalize ${tipoValido === op ? 'bg-card text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
                 >
                   {TIPOS_MOV.find((t) => t.v === op)?.l || op}
                 </button>
@@ -3957,7 +4139,7 @@ function AtualizarValorModal({ open, onClose, onSave, ativo, movimentacoes }) {
         <button
           onClick={submit}
           disabled={!valido}
-          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Confirmar
         </button>
@@ -4112,8 +4294,8 @@ function AtualizarTodosModal({ open, onClose, onSave, ativos, movimentacoes }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-base font-semibold text-slate-800">Atualizar saldos da carteira</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -4148,7 +4330,7 @@ function AtualizarTodosModal({ open, onClose, onSave, ativos, movimentacoes }) {
                   {dif > 0 ? (
                     <div className="flex bg-emerald-50 rounded-lg p-0.5 text-[11px] font-medium">
                       {['rendimento', 'aporte'].map((op) => (
-                        <button key={op} onClick={() => setTipos({ ...tipos, [a.id]: op })} className={`px-2 py-1 rounded-md ${tipo === op ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}>
+                        <button key={op} onClick={() => setTipos({ ...tipos, [a.id]: op })} className={`px-2 py-1 rounded-md ${tipo === op ? 'bg-card text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}>
                           {TIPOS_MOV.find((t) => t.v === op)?.l}
                         </button>
                       ))}
@@ -4162,7 +4344,7 @@ function AtualizarTodosModal({ open, onClose, onSave, ativos, movimentacoes }) {
         <button
           onClick={salvar}
           disabled={comMudanca.length === 0}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar {comMudanca.length > 0 ? `${comMudanca.length} ${comMudanca.length > 1 ? 'atualizações' : 'atualização'}` : ''}
         </button>
@@ -4189,8 +4371,8 @@ function EmprestimoModal({ open, onClose, onSave, initial }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">{initial ? 'Editar valor a receber' : 'Novo valor a receber'}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -4250,7 +4432,7 @@ function EmprestimoModal({ open, onClose, onSave, initial }) {
         <button
           onClick={submit}
           disabled={!valid}
-          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Salvar
         </button>
@@ -4276,8 +4458,8 @@ function RecebimentoModal({ open, onClose, onSave, emprestimo }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm p-5 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">Registrar recebimento</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -4304,7 +4486,7 @@ function RecebimentoModal({ open, onClose, onSave, emprestimo }) {
         <button
           onClick={submit}
           disabled={!valido}
-          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
+          className="w-full mt-4 bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition"
         >
           Confirmar
         </button>
@@ -4429,33 +4611,33 @@ function InvestimentosTab({
   return (
     <div className="pb-24 space-y-4">
       {/* Painel da carteira */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-900 to-emerald-700 text-white p-5 sm:p-6 shadow-lg shadow-emerald-900/20">
+      <div className="relative overflow-hidden rounded-3xl pf-hero text-white p-5 sm:p-6 shadow-lg shadow-black/10">
         <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-white/5" />
         <div className="relative">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-200/90 font-medium">Patrimônio investido</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] pf-destaque font-semibold">Patrimônio investido</div>
               <div className="text-3xl font-bold tracking-tight mt-1 pf-num">{formatBRL(patrimonioTotal)}</div>
-              <div className="text-xs text-emerald-100/80 mt-0.5">{ativos.length} ativo{ativos.length !== 1 ? 's' : ''} na carteira</div>
+              <div className="text-xs text-white/70 mt-0.5">{ativos.length} ativo{ativos.length !== 1 ? 's' : ''} na carteira</div>
             </div>
             <button
               onClick={() => { setEditandoAtivo(null); setAtivoModalOpen(true); }}
-              className="flex items-center gap-1.5 bg-white text-emerald-800 hover:bg-emerald-50 text-xs font-semibold px-3 py-2 rounded-xl transition shrink-0"
+              className="flex items-center gap-1.5 bg-card text-emerald-800 hover:bg-emerald-50 text-xs font-semibold px-3 py-2 rounded-xl transition shrink-0"
             >
               <Icon name="Plus" size={14} /> Novo ativo
             </button>
           </div>
           <div className="grid grid-cols-3 gap-2 mt-5">
             <div className="rounded-2xl bg-white/10 px-3 py-2.5">
-              <div className="text-[10px] text-emerald-100/80">Total aplicado</div>
+              <div className="text-[10px] text-white/70">Total aplicado</div>
               <div className="text-sm font-semibold pf-num">{formatBRL(resumoCarteira.aportado)}</div>
             </div>
             <div className="rounded-2xl bg-white/10 px-3 py-2.5">
-              <div className="text-[10px] text-emerald-100/80">Rendimento acumulado</div>
-              <div className="text-sm font-semibold text-emerald-300 pf-num">+{formatBRL(resumoCarteira.ganho)}</div>
+              <div className="text-[10px] text-white/70">Rendimento acumulado</div>
+              <div className="text-sm font-semibold pf-destaque pf-num">+{formatBRL(resumoCarteira.ganho)}</div>
             </div>
             <div className="rounded-2xl bg-white/10 px-3 py-2.5">
-              <div className="text-[10px] text-emerald-100/80">Rentab. média</div>
+              <div className="text-[10px] text-white/70">Rentab. média</div>
               <div className="text-sm font-semibold pf-num">{formatPct(resumoCarteira.mensal)} a.m.</div>
             </div>
           </div>
@@ -4468,7 +4650,7 @@ function InvestimentosTab({
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                 {porTipo.map(([tipo, v]) => (
-                  <span key={tipo} className="flex items-center gap-1.5 text-[11px] text-emerald-50/90">
+                  <span key={tipo} className="flex items-center gap-1.5 text-[11px] text-white/85">
                     <span className="w-2 h-2 rounded-full" style={{ background: CORES_TIPO_ATIVO[tipo] || '#94a3b8' }} />
                     {tipo} · {formatPct(v / patrimonioTotal, 0)}
                   </span>
@@ -4493,10 +4675,10 @@ function InvestimentosTab({
             <div className="text-xl font-bold text-slate-700 pf-num">{formatPct(cdiMensal)} <span className="text-xs font-medium">a.m.</span></div>
             <div className="text-[11px] text-slate-400 pf-num">{formatPct(cdiAnual)} ao ano</div>
           </div>
-          <div className={`rounded-2xl p-3 ${pctDoCdi >= 1 ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white' : 'bg-amber-50 text-amber-700'}`}>
-            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-emerald-50' : ''}`}>Sua carteira rende</div>
+          <div className={`rounded-2xl p-3 ${pctDoCdi >= 1 ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-onac' : 'bg-amber-50 text-amber-700'}`}>
+            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-onac/85' : ''}`}>Sua carteira rende</div>
             <div className="text-xl font-bold pf-num">{cdiMensal > 0 ? `${Math.round(pctDoCdi * 100)}% do CDI` : '—'}</div>
-            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-emerald-50/90' : ''}`}>{pctDoCdi >= 1 ? 'acima do CDI' : 'abaixo do CDI'}</div>
+            <div className={`text-[11px] ${pctDoCdi >= 1 ? 'text-onac/85' : ''}`}>{pctDoCdi >= 1 ? 'acima do CDI' : 'abaixo do CDI'}</div>
           </div>
         </div>
         <div className="space-y-2.5">
@@ -4537,7 +4719,7 @@ function InvestimentosTab({
         {ativos.length > 0 && (
           <button
             onClick={() => setAtualizarTodosOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 px-3 py-2 rounded-xl transition"
+            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-card border border-emerald-200 hover:bg-emerald-50 px-3 py-2 rounded-xl transition"
           >
             <Icon name="RefreshCw" size={13} /> Atualizar saldos de todos
           </button>
@@ -4576,7 +4758,7 @@ function InvestimentosTab({
               <button
                 key={op.v}
                 onClick={() => setPeriodoView(op.v)}
-                className={`px-3 py-1.5 rounded-lg transition ${periodoView === op.v ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
+                className={`px-3 py-1.5 rounded-lg transition ${periodoView === op.v ? 'bg-card text-emerald-700 shadow-sm' : 'text-emerald-600/70'}`}
               >
                 {op.l}
               </button>
@@ -4656,7 +4838,7 @@ function InvestimentosTab({
           <SectionTitle icon="Users" title="Valores pendentes a receber" subtitle={`${emprestimosPendentes.length} em aberto · ${formatBRL(totalPendente)}`} right={null} />
           <button
             onClick={() => { setEditandoEmprestimo(null); setEmprestimoModalOpen(true); }}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-xl transition shrink-0"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-onac text-xs font-medium px-3 py-2 rounded-xl transition shrink-0"
           >
             <Icon name="Plus" size={14} /> Novo
           </button>
@@ -4962,8 +5144,8 @@ function FinCampo({ label, value, onChange, type = 'number', placeholder, hint }
 
 function FinModalShell({ titulo, onClose, children, rodape }) {
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll">
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-[#0b1220]/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-card rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto pf-scroll">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-slate-800">{titulo}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400">
@@ -5036,7 +5218,7 @@ function FinRegistrarMesModal({ open, onClose, onSave, calc }) {
       titulo="Registrar pagamento do mês"
       onClose={onClose}
       rodape={(
-        <button onClick={salvar} className="w-full mt-5 bg-emerald-600 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">
+        <button onClick={salvar} className="w-full mt-5 bg-emerald-600 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">
           Salvar
         </button>
       )}
@@ -5112,7 +5294,7 @@ function FinLinhaModal({ open, onClose, onSave, inicial }) {
       titulo={inicial ? 'Editar lançamento' : 'Novo lançamento'}
       onClose={onClose}
       rodape={(
-        <button onClick={salvar} disabled={!f.venc} className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">
+        <button onClick={salvar} disabled={!f.venc} className="w-full mt-5 bg-emerald-600 disabled:bg-slate-200 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">
           Salvar
         </button>
       )}
@@ -5120,7 +5302,7 @@ function FinLinhaModal({ open, onClose, onSave, inicial }) {
       <div className="space-y-3">
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
           {[['parcela', 'Parcela'], ['extra', 'Amortização extra'], ['outro', 'Outro']].map(([id, label]) => (
-            <button key={id} onClick={() => set('t')(id)} className={`flex-1 text-xs py-1.5 rounded-lg ${f.t === id ? 'bg-white shadow text-emerald-700 font-medium' : 'text-slate-500'}`}>{label}</button>
+            <button key={id} onClick={() => set('t')(id)} className={`flex-1 text-xs py-1.5 rounded-lg ${f.t === id ? 'bg-card shadow text-emerald-700 font-medium' : 'text-slate-500'}`}>{label}</button>
           ))}
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -5161,7 +5343,7 @@ function FinConfigModal({ open, onClose, onSave, cfg }) {
     <FinModalShell
       titulo="Dados do contrato e premissas"
       onClose={onClose}
-      rodape={<button onClick={salvar} className="w-full mt-5 bg-emerald-600 text-white rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">Salvar</button>}
+      rodape={<button onClick={salvar} className="w-full mt-5 bg-emerald-600 text-onac rounded-xl py-3 text-sm font-medium hover:bg-emerald-700 transition">Salvar</button>}
     >
       <div className="grid grid-cols-2 gap-3">
         <FinCampo label="Banco" type="text" value={f.banco} onChange={set('banco')} />
@@ -5234,7 +5416,7 @@ function FinanciamentoTab({ dados, onSave }) {
     return t;
   }, { amort: 0, juros: 0, mip: 0, dfi: 0, tar: 0, mora: 0, pago: 0, apagar: 0 });
 
-  const cores = { pagoPrincipal: '#059669', pagoJuros: '#6ee7b7', restPrincipal: '#64748b', restJuros: '#cbd5e1', extras: '#0d9488' };
+  const cores = { pagoPrincipal: '#059669', pagoJuros: '#6ee7b7', restPrincipal: 'rgb(var(--sl-500))', restJuros: 'rgb(var(--sl-300))', extras: '#0d9488' };
   const pontos = (proj) => proj.linhas.map((l) => ({ d: l.venc, v: l.saldo }));
   const vazio = hist.length === 0;
 
@@ -5271,10 +5453,10 @@ function FinanciamentoTab({ dados, onSave }) {
             <div className="text-lg font-semibold text-slate-800">{formatBRL(plano.total)}</div>
             <div className="text-[10px] text-slate-400">saldo devedor hoje {formatBRL(saldoAtual)}</div>
           </div>
-          <div className="rounded-xl bg-emerald-600 p-3 text-white">
-            <div className="text-[11px] text-emerald-100">Quitação prevista</div>
+          <div className="rounded-xl bg-emerald-600 p-3 text-onac">
+            <div className="text-[11px] text-onac/80">Quitação prevista</div>
             <div className="text-lg font-semibold">{finMesAno(plano.quitacao)}</div>
-            <div className="text-[10px] text-emerald-100">em {finDuracao(plano.meses)}{mesesAntes > 0 ? ` · ${finDuracao(mesesAntes)} antes do banco` : ''}</div>
+            <div className="text-[10px] text-onac/80">em {finDuracao(plano.meses)}{mesesAntes > 0 ? ` · ${finDuracao(mesesAntes)} antes do banco` : ''}</div>
           </div>
         </div>
 
@@ -5302,7 +5484,7 @@ function FinanciamentoTab({ dados, onSave }) {
         <FinBarra altura="h-3" segmentos={[
           { label: 'Amortizado nas parcelas', valor: pago.principalParcelas, cor: cores.pagoPrincipal },
           { label: 'Amortizado com extras', valor: pago.principalExtras, cor: cores.extras },
-          { label: 'Saldo devedor', valor: saldoAtual, cor: '#e2e8f0' },
+          { label: 'Saldo devedor', valor: saldoAtual, cor: 'rgb(var(--sl-200))' },
         ]} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500">
           <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{ background: cores.pagoPrincipal }} />Parcelas {formatBRL(pago.principalParcelas)}</span>
@@ -5314,7 +5496,7 @@ function FinanciamentoTab({ dados, onSave }) {
             Com {formatBRL(cfg.extraPlano)}/mês de amortização extra, vocês deixam de pagar <b>{formatBRL(economiaJuros)}</b> de juros em relação ao plano do banco (quitação em {finMesAno(banco.quitacao)}).
           </div>
         )}
-        <button onClick={() => setMesOpen(true)} className="flex items-center justify-center gap-1.5 w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2.5 rounded-xl transition">
+        <button onClick={() => setMesOpen(true)} className="flex items-center justify-center gap-1.5 w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-onac text-sm font-medium px-3 py-2.5 rounded-xl transition">
           <Icon name="Plus" size={15} /> Registrar pagamento do mês
         </button>
       </Card>
@@ -5384,7 +5566,7 @@ function FinanciamentoTab({ dados, onSave }) {
         />
         <div className="flex flex-wrap gap-1.5 mb-3">
           {[['pagos', 'Pagos'], ['parcelas', 'Parcelas normais'], ['extras', 'Amortizações extras'], ['apagar', 'A pagar'], ['tudo', 'Tudo']].map(([id, label]) => (
-            <button key={id} onClick={() => setFiltro(id)} className={`text-xs px-3 py-1.5 rounded-full border transition ${filtro === id ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-200 text-slate-500 hover:border-emerald-300'}`}>{label}</button>
+            <button key={id} onClick={() => setFiltro(id)} className={`text-xs px-3 py-1.5 rounded-full border transition ${filtro === id ? 'bg-emerald-600 border-emerald-600 text-onac' : 'border-slate-200 text-slate-500 hover:border-emerald-300'}`}>{label}</button>
           ))}
           {(filtro === 'apagar' || filtro === 'tudo') && (
             <select value={cenarioTabela} onChange={(e) => setCenarioTabela(e.target.value)} className="text-xs border border-slate-200 rounded-full px-2 py-1.5 text-slate-600">
@@ -5396,7 +5578,7 @@ function FinanciamentoTab({ dados, onSave }) {
         {vazio && filtro !== 'apagar' ? <EmptyState text="Nenhum pagamento lançado ainda." /> : (
           <div className="overflow-auto pf-scroll max-h-[70vh] -mx-4 sm:mx-0">
             <table className="min-w-[1050px] w-full text-[11px]">
-              <thead className="sticky top-0 bg-emerald-700 text-white z-[1]">
+              <thead className="sticky top-0 bg-emerald-700 text-onac z-[1]">
                 <tr>
                   {['Nº', 'Vencimento', 'Pagamento', 'Histórico', 'Amortização', 'Juros', 'MIP', 'DFI', 'Tarifas', 'Mora', 'Valor pago', 'A pagar', 'Saldo devedor', ''].map((h, i) => (
                     <th key={i} className={`px-2 py-2 font-medium ${i >= 4 && i <= 12 ? 'text-right' : 'text-left'}`}>{h}</th>
@@ -5461,6 +5643,286 @@ function FinanciamentoTab({ dados, onSave }) {
 
 /* --------------------------------- App raiz -------------------------------- */
 
+/* ----------------------------- Configurações ------------------------------ */
+
+function OpcaoSegmentada({ opcoes, valor, onChange }) {
+  return (
+    <div className="grid gap-1 bg-slate-100 rounded-xl p-1" style={{ gridTemplateColumns: `repeat(${opcoes.length}, minmax(0, 1fr))` }}>
+      {opcoes.map((o) => (
+        <button
+          key={o.v}
+          onClick={() => onChange(o.v)}
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition ${valor === o.v ? 'bg-card text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          {o.icon && <Icon name={o.icon} size={14} />} {o.l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LinhaConfig({ titulo, texto, local, children }) {
+  return (
+    <div className="py-4 border-t border-slate-100 first:border-t-0 first:pt-0 last:pb-0 grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3 sm:items-center">
+      <div>
+        <div className="text-sm font-semibold text-slate-700">
+          {titulo}
+          {local && <span className="ml-2 align-middle text-[10px] font-medium uppercase tracking-wider text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">Só este aparelho</span>}
+        </div>
+        {texto && <div className="text-xs text-slate-400 mt-0.5">{texto}</div>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function ConfiguracoesTab({ aparencia, onSalvar, modo, onModo, escala, onEscala, intervalo, onIntervalo, gerenciarCategorias }) {
+  const presets = (window.pfTema && window.pfTema.PRESETS) || {};
+  const fontes = (window.pfTema && window.pfTema.FONTES) || {};
+  const textosDe = (a) => ({ nomeApp: a.nomeApp, chamada: a.chamada, titulo: a.titulo, frase: a.frase, referencia: a.referencia, mostrarFrase: a.mostrarFrase });
+  const [textos, setTextos] = useState(() => textosDe(aparencia));
+  const [cores, setCores] = useState(() => aparencia.cores || { brand: '#0C2340', ac: '#00924A' });
+  const [catTipo, setCatTipo] = useState(null);
+  const textosMudaram = JSON.stringify(textos) !== JSON.stringify(textosDe(aparencia));
+  const ocultas = aparencia.abasOcultas || [];
+  const abasConfig = TABS.filter((t) => t.id !== 'config');
+  const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-300';
+
+  // Carrega as fontes para a prévia dos botões de fonte
+  useEffect(() => {
+    if (document.getElementById('pf-fontes-previa')) return;
+    const link = document.createElement('link');
+    link.id = 'pf-fontes-previa';
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?${Object.values(fontes).map((f) => `family=${f.css.replace(/ /g, '+')}:wght@600`).join('&')}&display=swap`;
+    document.head.appendChild(link);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const alternarAba = (id) => {
+    const novas = ocultas.includes(id) ? ocultas.filter((x) => x !== id) : [...ocultas, id];
+    if (novas.length >= abasConfig.length) return; // pelo menos uma aba fica visível
+    const patch = { abasOcultas: novas };
+    if (novas.includes(aparencia.abaInicial)) patch.abaInicial = abasConfig.find((t) => !novas.includes(t.id)).id;
+    onSalvar(patch);
+  };
+
+  // Com "children" (cores personalizadas) vira um bloco comum, para os campos de cor funcionarem dentro dele
+  const CartaoTema = ({ p, ativo, onClick, children }) => React.createElement(
+    children ? 'div' : 'button',
+    {
+      onClick,
+      className: `flex flex-col text-left rounded-2xl border-2 overflow-hidden transition bg-card ${ativo ? 'border-emerald-600 shadow-md' : 'border-slate-200 hover:border-slate-300'}`,
+    },
+      <div className="h-14 px-3 flex items-center justify-between" style={{ background: `linear-gradient(100deg, ${p.brand}, ${p.brand2})` }}>
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.12)', color: p.destaque }}>
+          <Icon name="Wallet" size={14} />
+        </span>
+        <span className="h-1.5 w-10 rounded-full" style={{ background: p.destaque }} />
+      </div>,
+      <div className="p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-slate-800 truncate">{p.nome}</div>
+          {ativo && <span className="w-5 h-5 rounded-full bg-emerald-600 text-onac flex items-center justify-center shrink-0"><Icon name="Check" size={12} /></span>}
+        </div>
+        <div className="text-[11px] text-slate-400">{p.desc}</div>
+        {children || (
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="h-6 px-2.5 rounded-md text-[10px] font-semibold flex items-center" style={{ background: p.claro.ac, color: p.claro.onac || '#fff' }}>Botão</span>
+            <span className="w-6 h-6 rounded-md" style={{ background: p.destaque }} />
+            <span className="w-6 h-6 rounded-md border border-slate-200" style={{ background: p.fundo }} />
+          </div>
+        )}
+      </div>,
+  );
+
+  return (
+    <div className="pb-24 space-y-4">
+      <div className="relative overflow-hidden rounded-3xl pf-hero text-white px-5 py-5 sm:px-7 sm:py-6">
+        <div className="text-[11px] uppercase tracking-[0.2em] pf-destaque font-semibold">Personalize</div>
+        <h2 className="text-2xl font-bold tracking-tight mt-1">Configurações</h2>
+        <p className="mt-1 text-sm text-white/75 max-w-xl">Visual, textos, abas, categorias e sincronização. O que for "só este aparelho" não muda o que a outra pessoa vê.</p>
+      </div>
+
+      <Card className="p-5">
+        <SectionTitle icon="Sun" title="Aparência" subtitle="Modo de cor, tamanho do texto e fonte" />
+        <LinhaConfig titulo="Modo" texto="Automático segue o modo do celular ou computador" local>
+          <OpcaoSegmentada
+            valor={modo}
+            onChange={onModo}
+            opcoes={[{ v: 'claro', l: 'Claro', icon: 'Sun' }, { v: 'escuro', l: 'Escuro', icon: 'Moon' }, { v: 'auto', l: 'Automático', icon: 'Monitor' }]}
+          />
+        </LinhaConfig>
+        <LinhaConfig titulo="Tamanho do texto" texto="Aumenta ou diminui tudo na tela" local>
+          <OpcaoSegmentada
+            valor={escala}
+            onChange={onEscala}
+            opcoes={[{ v: 'compacto', l: 'Compacto' }, { v: 'normal', l: 'Normal' }, { v: 'grande', l: 'Grande' }]}
+          />
+        </LinhaConfig>
+        <LinhaConfig titulo="Fonte">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+            {Object.entries(fontes).map(([id, f]) => {
+              const ativo = (aparencia.fonte || 'inter') === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => onSalvar({ fonte: id })}
+                  className={`rounded-xl border px-2 py-2 text-center transition ${ativo ? 'border-emerald-600 bg-emerald-50 text-emerald-800' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                >
+                  <div className="text-lg font-semibold leading-none" style={{ fontFamily: `'${f.css}', sans-serif` }}>Aa</div>
+                  <div className="text-[10px] mt-1 truncate" style={{ fontFamily: `'${f.css}', sans-serif` }}>{f.nome}</div>
+                </button>
+              );
+            })}
+          </div>
+        </LinhaConfig>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle
+          icon="Sparkles"
+          title="Identidade visual"
+          subtitle="Cores do topo, dos botões e dos destaques"
+          right={(
+            <button onClick={() => onSalvar({ tema: 'marinho', cores: null, fonte: 'inter' })} className="text-[11px] font-medium text-slate-500 hover:text-emerald-700 whitespace-nowrap">
+              Restaurar padrão
+            </button>
+          )}
+        />
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          {Object.entries(presets).map(([id, p]) => (
+            <CartaoTema key={id} p={p} ativo={aparencia.tema === id} onClick={() => onSalvar({ tema: id })} />
+          ))}
+          <CartaoTema
+            p={{ nome: 'Personalizado', desc: 'Escolha suas cores', brand: cores.brand, brand2: cores.brand, destaque: cores.ac, claro: { ac: cores.ac }, fundo: '#fff' }}
+            ativo={aparencia.tema === 'personalizado'}
+          >
+            <div className="mt-2 space-y-1.5">
+              <label className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                Topo <input type="color" value={cores.brand} onChange={(e) => setCores({ ...cores, brand: e.target.value })} className="w-9 h-6 rounded border border-slate-200 bg-transparent cursor-pointer" />
+              </label>
+              <label className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                Botões <input type="color" value={cores.ac} onChange={(e) => setCores({ ...cores, ac: e.target.value })} className="w-9 h-6 rounded border border-slate-200 bg-transparent cursor-pointer" />
+              </label>
+              <button
+                onClick={() => onSalvar({ tema: 'personalizado', cores })}
+                className="w-full text-center text-[11px] font-semibold rounded-lg py-1.5 bg-emerald-600 text-onac hover:bg-emerald-700"
+              >
+                Aplicar cores
+              </button>
+            </div>
+          </CartaoTema>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon="Type" title="Textos do painel" subtitle="Nome do app e o cabeçalho do Dashboard" />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs font-medium text-slate-500">Nome do app (topo e aba do navegador)</span>
+            <input value={textos.nomeApp} onChange={(e) => setTextos({ ...textos, nomeApp: e.target.value })} className={`${inputCls} mt-1`} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-500">Chamada (texto pequeno acima do título)</span>
+            <input value={textos.chamada} onChange={(e) => setTextos({ ...textos, chamada: e.target.value })} className={`${inputCls} mt-1`} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-500">Título do Dashboard</span>
+            <input value={textos.titulo} onChange={(e) => setTextos({ ...textos, titulo: e.target.value })} className={`${inputCls} mt-1`} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-500">Frase</span>
+            <textarea rows={2} value={textos.frase} onChange={(e) => setTextos({ ...textos, frase: e.target.value })} className={`${inputCls} mt-1 resize-none`} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-500">Referência da frase</span>
+            <input value={textos.referencia} onChange={(e) => setTextos({ ...textos, referencia: e.target.value })} className={`${inputCls} mt-1`} />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 sm:mt-5">
+            <input type="checkbox" checked={!!textos.mostrarFrase} onChange={(e) => setTextos({ ...textos, mostrarFrase: e.target.checked })} className="accent-emerald-600 w-4 h-4" />
+            Mostrar a frase no Dashboard
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          {textosMudaram && (
+            <button onClick={() => setTextos(textosDe(aparencia))} className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">Desfazer</button>
+          )}
+          <button
+            onClick={() => onSalvar({ ...textos, nomeApp: textos.nomeApp.trim() || APARENCIA_PADRAO.nomeApp, titulo: textos.titulo.trim() || APARENCIA_PADRAO.titulo })}
+            disabled={!textosMudaram}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-600 text-onac hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            Salvar textos
+          </button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon="LayoutDashboard" title="Abas e navegação" subtitle="Escolha quais abas aparecem e qual abre primeiro" />
+        <LinhaConfig titulo="Abas visíveis" texto="Esconder uma aba não apaga nenhum dado">
+          <div className="flex flex-wrap gap-1.5">
+            {abasConfig.map((t) => {
+              const visivel = !ocultas.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => alternarAba(t.id)}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl border transition ${visivel ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'border-slate-200 text-slate-400 line-through'}`}
+                >
+                  <Icon name={visivel ? 'Check' : 'X'} size={12} /> {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </LinhaConfig>
+        <LinhaConfig titulo="Abrir o site em">
+          <select value={aparencia.abaInicial || 'dashboard'} onChange={(e) => onSalvar({ abaInicial: e.target.value })} className={inputCls}>
+            {abasConfig.filter((t) => !ocultas.includes(t.id)).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </LinhaConfig>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon="Filter" title="Categorias" subtitle="Cadastrar, renomear, excluir e escolher a linha do DRE" />
+        <div className="grid sm:grid-cols-2 gap-2">
+          {[['pagar', 'Contas a Pagar e Cartão', CATEGORIAS_PAGAR, 'ArrowUpCircle'], ['receber', 'Contas a Receber', CATEGORIAS_RECEBER, 'ArrowDownCircle']].map(([tipo, rotulo, lista, icone]) => (
+            <button
+              key={tipo}
+              onClick={() => setCatTipo(tipo)}
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 hover:border-emerald-300 px-4 py-3 text-left transition"
+            >
+              <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><Icon name={icone} size={17} /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-700">{rotulo}</span>
+                <span className="block text-[11px] text-slate-400">{lista.length} categorias</span>
+              </span>
+              <Icon name="ChevronRight" size={16} className="text-slate-300" />
+            </button>
+          ))}
+        </div>
+        <CategoriasModal
+          open={!!catTipo}
+          onClose={() => setCatTipo(null)}
+          tipo={catTipo || 'pagar'}
+          categorias={catTipo === 'receber' ? CATEGORIAS_RECEBER : CATEGORIAS_PAGAR}
+          gerenciar={gerenciarCategorias}
+        />
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon="RefreshCw" title="Sincronização" subtitle="Como o site busca o que foi salvo em outro aparelho" />
+        <LinhaConfig titulo="Atualização automática" texto="Ao voltar para o site ele sempre busca as novidades" local>
+          <OpcaoSegmentada
+            valor={intervalo}
+            onChange={onIntervalo}
+            opcoes={[{ v: 10, l: '10 s' }, { v: 20, l: '20 s' }, { v: 60, l: '1 min' }, { v: 0, l: 'Desligada' }]}
+          />
+        </LinhaConfig>
+      </Card>
+    </div>
+  );
+}
+
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
   { id: 'receber', label: 'A Receber', icon: 'ArrowDownCircle' },
@@ -5469,6 +5931,7 @@ const TABS = [
   { id: 'investimentos', label: 'Investimentos', icon: 'TrendingUp' },
   { id: 'financiamento', label: 'Financiamento', icon: 'Landmark' },
   { id: 'metas', label: 'Sonhos & Metas', icon: 'Sparkles' },
+  { id: 'config', label: 'Configurações', icon: 'Settings' },
 ];
 
 function App() {
@@ -5495,6 +5958,7 @@ function App() {
   // trazer de volta um lançamento que acabou de ser excluído/editado.
   const salvandoRef = useRef(0);
   const ultimaAlteracaoRef = useRef(0);
+  const abaInicialRef = useRef(false);
 
   const carregarDados = useCallback(async (silencioso = false) => {
     if (silencioso && salvandoRef.current > 0) return;
@@ -5506,6 +5970,11 @@ function App() {
       if (dados.lancamentos) setLancamentos(dados.lancamentos);
       if (dados.orcamentos) setOrcamentos(dados.orcamentos);
       if (dados.config) setConfig(dados.config);
+      if (!silencioso && !abaInicialRef.current) {
+        abaInicialRef.current = true;
+        const inicial = dados.config?.aparencia?.abaInicial;
+        if (inicial && inicial !== 'dashboard' && TABS.some((t) => t.id === inicial)) setTab(inicial);
+      }
       if (dados.metas) setMetas(dados.metas);
       if (dados.cartaoTransacoes) setCartaoTransacoes(dados.cartaoTransacoes);
       if (dados.investAtivos) setInvestAtivos(dados.investAtivos);
@@ -5534,19 +6003,20 @@ function App() {
 
   // Atualização automática: busca dados novos a cada 20s, para refletir o que a outra
   // pessoa salvou em outro dispositivo, sem precisar recarregar a página manualmente.
+  const [intervaloSync, setIntervaloSync] = useState(() => Number(lerLocal('pf:sync', '20')) || 0); // segundos; 0 = desligada
   useEffect(() => {
-    const intervalo = setInterval(() => {
+    const intervalo = intervaloSync > 0 ? setInterval(() => {
       if (document.visibilityState === 'visible' && pendentes.length === 0) carregarDados(true);
-    }, 20000);
+    }, intervaloSync * 1000) : null;
     const aoFocar = () => { if (pendentes.length === 0) carregarDados(true); };
     window.addEventListener('focus', aoFocar);
     document.addEventListener('visibilitychange', aoFocar);
     return () => {
-      clearInterval(intervalo);
+      if (intervalo) clearInterval(intervalo);
       window.removeEventListener('focus', aoFocar);
       document.removeEventListener('visibilitychange', aoFocar);
     };
-  }, [carregarDados, pendentes.length]);
+  }, [carregarDados, pendentes.length, intervaloSync]);
 
   const flashSaved = () => {
     setSavingState('saved');
@@ -5687,6 +6157,34 @@ function App() {
     },
   };
 
+  // Aparência: identidade visual e textos ficam no banco; modo claro/escuro e tamanho do texto, neste aparelho.
+  const aparencia = useMemo(() => ({ ...APARENCIA_PADRAO, ...(config.aparencia || {}) }), [config.aparencia]);
+  APARENCIA = aparencia;
+  const [modo, setModo] = useState(() => lerLocal('pf:modo', 'claro')); // claro | escuro | auto
+  const [escalaTexto, setEscalaTexto] = useState(() => lerLocal('pf:escala', 'normal'));
+  const [sistemaEscuro, setSistemaEscuro] = useState(() => {
+    try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return false; }
+  });
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const mudou = (e) => setSistemaEscuro(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', mudou); else mq.addListener(mudou);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', mudou); else mq.removeListener(mudou); };
+  }, []);
+  const escuro = modo === 'escuro' || (modo === 'auto' && sistemaEscuro);
+  const mudarModo = (m) => { setModo(m); gravarLocal('pf:modo', m); };
+  const mudarEscala = (v) => { setEscalaTexto(v); gravarLocal('pf:escala', v); };
+  const mudarIntervalo = (v) => { setIntervaloSync(v); gravarLocal('pf:sync', String(v)); };
+  const coresJson = JSON.stringify(aparencia.cores || null);
+  useEffect(() => {
+    if (window.pfTema) window.pfTema.aplicar({ tema: aparencia.tema, cores: aparencia.cores, fonte: aparencia.fonte, escuro, escala: escalaTexto });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aparencia.tema, coresJson, aparencia.fonte, escuro, escalaTexto]);
+  useEffect(() => { document.title = aparencia.nomeApp || 'Finanças'; }, [aparencia.nomeApp]);
+  const salvarAparencia = (patch) => persist('config', { ...config, aparencia: { ...(config.aparencia || {}), ...patch } }, setConfig);
+  const abasVisiveis = TABS.filter((t) => t.id === 'config' || t.id === tab || !(aparencia.abasOcultas || []).includes(t.id));
+
   const addMeta = (meta) => persist('metas', [...metas, meta], setMetas);
   const editMeta = (editada) => persist('metas', metas.map((m) => (m.id === editada.id ? editada : m)), setMetas);
   const deleteMeta = (meta) => persist('metas', metas.filter((m) => m.id !== meta.id), setMetas);
@@ -5803,46 +6301,59 @@ function App() {
     <div className="pf-root min-h-screen">
       <GlobalStyle />
 
-      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur-md border-b border-slate-200/70 shadow-sm shadow-slate-900/5">
-        <div className="max-w-5xl mx-auto px-4 pt-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-600/30">
+      <header className="sticky top-0 z-20 pf-topo text-white shadow-lg shadow-black/10">
+        <div className="max-w-6xl mx-auto px-4 pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-white/10 ring-1 ring-white/15 flex items-center justify-center pf-destaque shrink-0">
                 <Icon name="Wallet" size={18} />
               </div>
-              <h1 className="text-[15px] font-bold text-slate-800 tracking-tight">Finanças da Casa</h1>
+              <h1 className="text-[15px] font-bold tracking-tight truncate">{aparencia.nomeApp}</h1>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="text-[11px] text-slate-400 flex items-center gap-1 min-w-[70px] justify-end">
+            <div className="flex items-center gap-1">
+              <div className="text-[11px] text-white/60 hidden sm:flex items-center gap-1 min-w-[70px] justify-end mr-1">
                 {savingState === 'saving' && <><Icon name="Loader2" size={12} className="animate-spin" /> salvando…</>}
-                {savingState === 'saved' && <><Icon name="Cloud" size={12} className="text-emerald-500" /> salvo</>}
-                {savingState === 'error' && <><Icon name="CloudOff" size={12} className="text-red-500" /> erro ao salvar</>}
+                {savingState === 'saved' && <><Icon name="Cloud" size={12} className="pf-destaque" /> salvo</>}
+                {savingState === 'error' && <><Icon name="CloudOff" size={12} className="text-red-300" /> erro ao salvar</>}
                 {savingState === 'idle' && ultimaSincronia && (
                   <span title={ultimaSincronia.toLocaleString('pt-BR')}>
                     atualizado {ultimaSincronia.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>
+              <div className="sm:hidden mr-1">
+                {savingState === 'saving' && <Icon name="Loader2" size={13} className="text-white/70" />}
+                {savingState === 'saved' && <Icon name="Cloud" size={14} className="pf-destaque" />}
+                {savingState === 'error' && <Icon name="CloudOff" size={14} className="text-red-300" />}
+              </div>
+              <button
+                onClick={() => mudarModo(escuro ? 'claro' : 'escuro')}
+                title={escuro ? 'Mudar para o modo claro' : 'Mudar para o modo escuro'}
+                className="w-9 h-9 flex items-center justify-center rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition"
+              >
+                <Icon name={escuro ? 'Sun' : 'Moon'} size={16} />
+              </button>
               <button
                 onClick={() => carregarDados(true)}
                 title="Buscar atualizações agora"
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 transition"
+                className="w-9 h-9 flex items-center justify-center rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition"
               >
                 <Icon name="RefreshCw" size={15} />
               </button>
             </div>
           </div>
 
-          <nav className="flex gap-1 mt-3 pb-2.5 overflow-x-auto pf-scroll -mx-4 px-4">
-            {TABS.map((t) => {
+          <nav className="flex gap-0.5 mt-2.5 overflow-x-auto pf-scroll -mx-4 px-3">
+            {abasVisiveis.map((t) => {
               const active = tab === t.id;
               return (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap rounded-xl transition ${active ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25' : 'text-slate-500 hover:text-emerald-700 hover:bg-emerald-50'}`}
+                  className={`relative flex items-center gap-1.5 px-3 pt-2 pb-3 text-xs font-semibold whitespace-nowrap transition ${active ? 'text-white' : 'text-white/60 hover:text-white'}`}
                 >
-                  <Icon name={t.icon} size={14} /> {t.label}
+                  <Icon name={t.icon} size={14} className={active ? 'pf-destaque' : ''} /> {t.label}
+                  {active && <span className="absolute left-2.5 right-2.5 bottom-0 h-[3px] rounded-t-full" style={{ background: 'rgb(var(--destaque))' }} />}
                 </button>
               );
             })}
@@ -5850,7 +6361,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 pt-5">
+      <main className="max-w-6xl mx-auto px-4 pt-5">
         {errorMsg && (
           <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-100 text-red-600 text-xs rounded-xl px-3 py-2.5">
             <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
@@ -5958,6 +6469,19 @@ function App() {
                 onEdit={editMeta}
                 onDelete={deleteMeta}
                 onAportar={aportarMeta}
+              />
+            )}
+            {tab === 'config' && (
+              <ConfiguracoesTab
+                aparencia={aparencia}
+                onSalvar={salvarAparencia}
+                modo={modo}
+                onModo={mudarModo}
+                escala={escalaTexto}
+                onEscala={mudarEscala}
+                intervalo={intervaloSync}
+                onIntervalo={mudarIntervalo}
+                gerenciarCategorias={gerenciarCategorias}
               />
             )}
           </>
